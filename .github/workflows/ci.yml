@@ -63,6 +63,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     name: Build Docker Images
+    permissions:
+      contents: read
+      packages: write
     
     steps:
     - name: Checkout code
