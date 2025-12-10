@@ -1,0 +1,46 @@
+# Dockerfile optimisé pour Passet Hub Indexer
+FROM node:20-alpine
+
+# Installer les dépendances système et configurer l'environnement
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    postgresql-client \
+    netcat-openbsd && \
+    corepack enable
+
+# Définir le répertoire de travail
+WORKDIR /app
+
+# Copier les fichiers de configuration des dépendances
+COPY package.json yarn.lock ./
+COPY tsconfig.json squid.yaml typegen.json passet-hub-metadata.jsonl ./
+
+# Configurer Yarn et installer les dépendances
+RUN yarn config set nodeLinker node-modules && \
+    yarn install --frozen-lockfile && \
+    yarn dlx @subsquid/cli@2.0.0
+
+# Copier le code source et les fichiers nécessaires
+COPY src/ ./src/
+COPY schema.graphql guess_the_number.json ./
+COPY typeorm.config.ts ./
+
+# Générer les types, compiler et générer les migrations
+RUN yarn codegen && \
+    yarn build && \
+    yarn db:generate
+
+# Copier les migrations existantes (si elles existent)
+COPY db/migrations/ ./db/migrations/
+
+# Copier le script de démarrage
+COPY docker-start.sh ./docker-start.sh
+RUN chmod +x ./docker-start.sh
+
+# Exposer le port pour l'API
+EXPOSE 4000
+
+# Commande par défaut
+CMD ["./docker-start.sh"]

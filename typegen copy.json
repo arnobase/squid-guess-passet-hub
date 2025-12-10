@@ -1,0 +1,26 @@
+{
+  "outDir": "src/types",
+  "specVersions": "./passet-hub-metadata.jsonl",
+  "pallets": {
+    "Revive": {
+      "events": [
+        "ContractEmitted",
+        "ContractInstantiated",
+        "CodeStored"
+      ],
+      "calls": [],
+      "storage": [],
+      "constants": []
+    }
+  },
+  "contracts": {
+    "guess_the_number": {
+      "spec": "../guess_the_number.json",
+      "events": [
+        "NewGame",
+        "GuessMade", 
+        "ClueGiven"
+      ]
+    }
+  }
+}

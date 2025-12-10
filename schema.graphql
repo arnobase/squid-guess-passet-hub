@@ -1,0 +1,85 @@
+# Supprimé : Account et Transfer - focus sur les jeux uniquement
+
+type Contract @entity {
+  id: ID!
+  codeHash: String
+  instantiatedAt: DateTime!
+  instantiatedAtBlock: Int!
+  instantiatedBy: String!
+  
+  # Relations to specific event types
+  gameStartedEvents: [GameStartedEvent!] @derivedFrom(field: "contract")
+  guessSubmittedEvents: [GuessSubmittedEvent!] @derivedFrom(field: "contract")
+  clueGivenEvents: [ClueGivenEvent!] @derivedFrom(field: "contract")
+}
+
+# Game started event
+type GameStartedEvent @entity {
+  id: ID!
+  contract: Contract!
+  blockNumber: Int! @index
+  timestamp: DateTime! @index
+  extrinsicHash: String @index
+  contractAddress: String!
+  
+  # Game started specific fields
+  gameNumber: BigInt! @index
+  player: String!
+  minNumber: Int!
+  maxNumber: Int!
+}
+
+# Guess submitted event
+type GuessSubmittedEvent @entity {
+  id: ID!
+  contract: Contract!
+  blockNumber: Int! @index
+  timestamp: DateTime! @index
+  extrinsicHash: String @index
+  contractAddress: String!
+  
+  # Guess submitted specific fields
+  gameNumber: BigInt! @index
+  attemptNumber: Int!
+  guess: Int!
+}
+
+# Clue given event
+type ClueGivenEvent @entity {
+  id: ID!
+  contract: Contract!
+  blockNumber: Int! @index
+  timestamp: DateTime! @index
+  extrinsicHash: String @index
+  contractAddress: String!
+  
+  # Clue given specific fields
+  gameNumber: BigInt! @index
+  attemptNumber: Int!
+  guess: Int!
+  result: String!
+}
+
+type Game @entity {
+  id: ID!
+  gameNumber: BigInt! @index
+  player: String!
+  minNumber: Int!
+  maxNumber: Int!
+  attempt: Int!
+  lastGuess: Int
+  lastClue: String
+  createdAt: DateTime! @index
+  createdAtBlock: Int! @index
+  contract: Contract!
+  
+  # ✅ NOUVEAU: Historique des tentatives
+  guessHistory: [GuessHistoryItem!]!
+}
+
+# ✅ NOUVEAU: Type pour l'historique des tentatives
+type GuessHistoryItem {
+  attemptNumber: Int!
+  guess: Int!
+  result: String!
+}

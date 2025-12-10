@@ -1,0 +1,60 @@
+name: passet-hub
+
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: passet_hub_indexer
+      POSTGRES_PASSWORD: postgres
+    shm_size: 1gb
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile.simple
+    depends_on:
+      - db
+    environment:
+      - RPC_PASSET_HUB_WS=${RPC_PASSET_HUB_WS}
+      - START_BLOCK=${START_BLOCK}
+      - END_BLOCK=${END_BLOCK}
+      - FINALITY_CONFIRMATION=${FINALITY_CONFIRMATION}
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=passet_hub_indexer
+      - DB_USER=postgres
+      - DB_PASS=postgres
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - TARGET_CONTRACTS=${TARGET_CONTRACTS:-0xe75cbd47620dbb2053cf2a98d06840f06baaf141}
+      - NODE_ENV=${NODE_ENV:-production}
+    restart: unless-stopped
+    command: ["./docker-start.sh"]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.simple
+    depends_on:
+      - db
+      - indexer
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=passet_hub_indexer
+      - DB_USER=postgres
+      - DB_PASS=postgres
+    ports:
+      - "4000:4000"
+    restart: unless-stopped
+    command: ["sh", "-c", "sleep 20 && yarn serve"]
+
+volumes:
+  postgres_data:
+      # command: ["postgres", "-c", "log_statement=all"]
+#    volumes:
+#      - ./data/db:/var/lib/postgresql/data
+

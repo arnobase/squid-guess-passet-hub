@@ -1,0 +1,223 @@
+name: Passet Hub Indexer CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Job de test et validation
+  test:
+    runs-on: ubuntu-latest
+    name: Test and Validate
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'yarn'
+        
+    - name: Enable Corepack
+      run: corepack enable
+      
+    - name: Install dependencies
+      run: yarn install --frozen-lockfile
+      
+    - name: Lint TypeScript
+      run: yarn lint || echo "Linting not configured, skipping..."
+      
+    - name: Type check
+      run: yarn tsc --noEmit
+      
+    - name: Generate types
+      run: yarn codegen
+      
+    - name: Build project
+      run: yarn build
+      
+    - name: Generate database schema
+      run: yarn db:generate
+      
+    - name: Validate GraphQL schema
+      run: |
+        if [ -f schema.graphql ]; then
+          echo "✅ GraphQL schema found"
+          head -5 schema.graphql
+        else
+          echo "❌ GraphQL schema missing"
+          exit 1
+        fi
+
+  # Job de build Docker
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    name: Build Docker Images
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+          
+    - name: Build and push indexer image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.simple
+        push: true
+        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-indexer:${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        
+    - name: Build and push API image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.simple
+        push: true
+        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  # Job de test d'intégration Docker
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: build
+    name: Docker Integration Test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Build images for testing
+      run: |
+        docker-compose build
+        
+    - name: Start services
+      run: |
+        docker-compose up -d
+        sleep 30
+        
+    - name: Test indexer health
+      run: |
+        # Vérifier que l'indexer est en cours d'exécution
+        docker-compose ps
+        docker-compose logs indexer --tail=20
+        
+        # Vérifier que l'indexer traite des blocs
+        if docker-compose logs indexer | grep -q "Processing.*blocks"; then
+          echo "✅ Indexer is processing blocks"
+        else
+          echo "❌ Indexer is not processing blocks"
+          exit 1
+        fi
+        
+    - name: Test API health
+      run: |
+        # Vérifier que l'API répond
+        sleep 10
+        if curl -f http://localhost:4000/graphql -X POST -H "Content-Type: application/json" -d '{"query":"{ __schema { types { name } } }"}' > /dev/null 2>&1; then
+          echo "✅ API is responding"
+        else
+          echo "❌ API is not responding"
+          exit 1
+        fi
+        
+    - name: Test database connection
+      run: |
+        # Vérifier que la base de données est accessible
+        docker-compose exec -T db psql -U postgres -d passet_hub_indexer -c "SELECT 1;" > /dev/null 2>&1
+        if [ $? -eq 0 ]; then
+          echo "✅ Database is accessible"
+        else
+          echo "❌ Database is not accessible"
+          exit 1
+        fi
+        
+    - name: Cleanup
+      if: always()
+      run: |
+        docker-compose down -v
+        docker system prune -f
+
+  # Job de déploiement (optionnel)
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [test, build, integration-test]
+    name: Deploy to Production
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Deploy to production
+      run: |
+        echo "🚀 Deploying to production..."
+        echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-indexer:latest"
+        echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:latest"
+        # Ici vous pouvez ajouter votre logique de déploiement
+        # Par exemple : mise à jour d'un serveur, déploiement sur Kubernetes, etc.
+        
+    - name: Notify deployment
+      run: |
+        echo "✅ Deployment completed successfully!"
+        # Ici vous pouvez ajouter des notifications (Slack, Discord, email, etc.)
+
+  # Job de sécurité
+  security:
+    runs-on: ubuntu-latest
+    name: Security Scan
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'

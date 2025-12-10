@@ -1,0 +1,45 @@
+name: Quick Build and Test
+
+on:
+  push:
+    branches: [ develop ]
+  pull_request:
+    branches: [ develop ]
+
+jobs:
+  quick-test:
+    runs-on: ubuntu-latest
+    name: Quick Test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'yarn'
+        
+    - name: Enable Corepack
+      run: corepack enable
+      
+    - name: Install dependencies
+      run: yarn install --frozen-lockfile
+      
+    - name: Type check
+      run: yarn tsc --noEmit
+      
+    - name: Build project
+      run: yarn build
+      
+    - name: Test Docker build
+      run: |
+        docker-compose build --no-cache
+        echo "✅ Docker build successful"
+        
+    - name: Cleanup
+      if: always()
+      run: |
+        docker-compose down -v
+        docker system prune -f

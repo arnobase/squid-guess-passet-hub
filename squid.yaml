@@ -1,0 +1,9 @@
+name: passet-hub-indexer
+description: Passet Hub Indexer for Revive pallet events
+version: 1.0.0
+
+deploy:
+  processor:
+    cmd: ["node", "-r", "dotenv/config", "lib/main.js"]
+  api:
+    cmd: ["node", "-r", "dotenv/config", "node_modules/@subsquid/graphql-server/lib/index.js"]

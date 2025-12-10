@@ -1,0 +1,16 @@
+{
+  "outDir": "src/types",
+  "specVersions": "./passet-hub-metadata.jsonl",
+  "pallets": {
+    "Revive": {
+      "events": [
+        "ContractEmitted",
+        "ContractInstantiated",
+        "CodeStored"
+      ],
+      "calls": [],
+      "storage": [],
+      "constants": []
+    }
+  }
+}

@@ -1,0 +1,196 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Ink! Contracts Configuration (Extended with Versioning)",
+  "description": "Configuration format for Ink! contracts, compatible with squid-gen-ink format and extended with versioning support",
+  "type": "object",
+  "properties": {
+    "contracts": {
+      "type": "array",
+      "description": "List of Ink! contracts. Compatible with squid-gen-ink format, extended with versioning.",
+      "items": {
+        "oneOf": [
+          {
+            "description": "Simple format (compatible with squid-gen-ink): single version contract",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Contract name (used as folder name)"
+              },
+              "address": {
+                "type": "string",
+                "pattern": "^0x[a-fA-F0-9]{40}$",
+                "description": "Contract address (single address, squid-gen-ink compatible)"
+              },
+              "abi": {
+                "type": "string",
+                "description": "Path to Ink! metadata JSON (squid-gen-ink uses 'abi', we accept both 'abi' and 'metadata')"
+              },
+              "metadata": {
+                "type": "string",
+                "description": "Path to Ink! metadata JSON (alternative to 'abi')"
+              },
+              "events": {
+                "oneOf": [
+                  {
+                    "type": "boolean",
+                    "description": "true indexes all events, false indexes none"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "List of specific event names to index"
+                  }
+                ],
+                "default": false
+              },
+              "range": {
+                "type": "object",
+                "description": "Block range (squid-gen-ink compatible)",
+                "properties": {
+                  "from": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "to": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": ["name"],
+            "additionalProperties": false
+          },
+          {
+            "description": "Extended format with versioning support",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[a-z0-9_]+$",
+                "description": "Contract name (used as folder name)"
+              },
+              "metadata": {
+                "type": "string",
+                "description": "Default metadata path (used if version doesn't specify)"
+              },
+              "versions": {
+                "type": "array",
+                "description": "List of contract versions with their block ranges",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "tag": {
+                      "type": "string",
+                      "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9-]+)?$",
+                      "description": "Version tag (semver format: v1.2.3)"
+                    },
+                    "metadata": {
+                      "type": "string",
+                      "description": "Path to Ink! v6 metadata JSON for this version"
+                    },
+                    "abi": {
+                      "type": "string",
+                      "description": "Path to Ink! metadata JSON (alternative to 'metadata', for squid-gen-ink compatibility)"
+                    },
+                    "addresses": {
+                      "type": "array",
+                      "description": "Contract addresses using this version (multiple addresses supported)",
+                      "minItems": 1,
+                      "items": {
+                        "type": "string",
+                        "pattern": "^0x[a-fA-F0-9]{40}$"
+                      }
+                    },
+                    "address": {
+                      "type": "string",
+                      "pattern": "^0x[a-fA-F0-9]{40}$",
+                      "description": "Single contract address (alternative to addresses array for compatibility)"
+                    },
+                    "blockRange": {
+                      "type": "object",
+                      "description": "Block height range where this version is active",
+                      "properties": {
+                        "from": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "Starting block height (inclusive)"
+                        },
+                        "to": {
+                          "oneOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "Ending block height (exclusive) or null for ongoing"
+                        }
+                      },
+                      "required": ["from"],
+                      "additionalProperties": false
+                    },
+                    "range": {
+                      "type": "object",
+                      "description": "Block range (alternative to blockRange for compatibility)",
+                      "properties": {
+                        "from": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "to": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "events": {
+                      "oneOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      ],
+                      "description": "Events to index for this version"
+                    },
+                    "codeHash": {
+                      "oneOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^0x[a-fA-F0-9]{64}$"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    }
+                  },
+                  "required": ["tag", "blockRange"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["name", "versions"],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": ["contracts"],
+  "additionalProperties": false
+}

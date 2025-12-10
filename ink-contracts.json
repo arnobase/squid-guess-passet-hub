@@ -1,0 +1,15 @@
+{
+  "$schema": "./ink-contracts.schema.json",
+  "description": "Configuration for Ink! contracts",
+  "contracts": [
+    {
+      "name": "guess_the_number",
+      "address": "0xe75cbd47620dbb2053cf2a98d06840f06baaf141",
+      "metadata": "./guess_the_number.json",
+      "range": {
+        "from": 1934744
+      }
+    }
+  ]
+}
+
