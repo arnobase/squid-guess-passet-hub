@@ -41,5 +41,8 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.5.2"
   },
+  "resolutions": {
+    "glob": "^10.5.0"
+  },
   "packageManager": "yarn@4.10.3"
 }
