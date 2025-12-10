@@ -140,21 +140,21 @@ jobs:
       
     - name: Build images for testing
       run: |
-        docker-compose build
+        docker compose build
         
     - name: Start services
       run: |
-        docker-compose up -d
+        docker compose up -d
         sleep 30
         
     - name: Test indexer health
       run: |
         # Vérifier que l'indexer est en cours d'exécution
-        docker-compose ps
-        docker-compose logs indexer --tail=20
+        docker compose ps
+        docker compose logs indexer --tail=20
         
         # Vérifier que l'indexer traite des blocs
-        if docker-compose logs indexer | grep -q "Processing.*blocks"; then
+        if docker compose logs indexer | grep -q "Processing.*blocks"; then
           echo "✅ Indexer is processing blocks"
         else
           echo "❌ Indexer is not processing blocks"
@@ -175,7 +175,7 @@ jobs:
     - name: Test database connection
       run: |
         # Vérifier que la base de données est accessible
-        docker-compose exec -T db psql -U postgres -d passet_hub_indexer -c "SELECT 1;" > /dev/null 2>&1
+        docker compose exec -T db psql -U postgres -d passet_hub_indexer -c "SELECT 1;" > /dev/null 2>&1
         if [ $? -eq 0 ]; then
           echo "✅ Database is accessible"
         else
@@ -186,7 +186,7 @@ jobs:
     - name: Cleanup
       if: always()
       run: |
-        docker-compose down -v
+        docker compose down -v
         docker system prune -f
 
   # Job de déploiement (optionnel)

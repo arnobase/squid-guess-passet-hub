@@ -35,11 +35,11 @@ jobs:
       
     - name: Test Docker build
       run: |
-        docker-compose build --no-cache
+        docker compose build --no-cache
         echo "✅ Docker build successful"
         
     - name: Cleanup
       if: always()
       run: |
-        docker-compose down -v
+        docker compose down -v
         docker system prune -f
