@@ -8,6 +8,7 @@
  */
 
 import * as v0_1_0 from './v0.1.0'
+import * as v0_1_2 from './v0.1.2'
 
 /**
  * Version entry in registry
@@ -25,7 +26,8 @@ export type VersionEntry = {
  * Sorted by starting block height
  */
 const registry: VersionEntry[] = [
-  { version: 'v0.1.0', addresses: ['0xe75cbd47620dbb2053cf2a98d06840f06baaf141'], from: 1934744, to: null }
+  { version: 'v0.1.0', addresses: ['0xe75cbd47620dbb2053cf2a98d06840f06baaf141'], from: 1934744, to: null },
+  { version: 'v0.1.2', addresses: ['0xe75cbd47620dbb2053cf2a98d06840f06baaf141'], from: 1934744, to: null }
 ]
 
 /**
@@ -71,6 +73,7 @@ export function resolveDecoder(_address: string, _blockHeight: number, _codeHash
   
   switch (entry.version) {
       case 'v0.1.0': return v0_1_0
+      case 'v0.1.2': return v0_1_2
     default: throw new Error('Version not found: ' + entry.version)
   }
 }

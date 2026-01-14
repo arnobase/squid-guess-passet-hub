@@ -393,6 +393,18 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@luckyweb3/subsquid-ink-v6-decoder@file:./packages/subsquid-ink-v6-decoder::locator=squid%40workspace%3A.":
+  version: 1.0.0
+  resolution: "@luckyweb3/subsquid-ink-v6-decoder@file:./packages/subsquid-ink-v6-decoder#./packages/subsquid-ink-v6-decoder::hash=5bf268&locator=squid%40workspace%3A."
+  peerDependencies:
+    "@polkadot/util": ^13.0.0
+    "@polkadot/util-crypto": ^13.0.0
+  bin:
+    subsquid-ink-v6-decoder: ./lib/cli.js
+  checksum: 10c0/e6a721e487b6c56349bf31e07b8607e0e2ca04341c99f61a656f8aff97f87a484aa495a19fed51586760d95c51cd19004415d064097a73c6981b3de584d0306d
+  languageName: node
+  linkType: hard
+
 "@noble/curves@npm:^1.3.0":
   version: 1.9.7
   resolution: "@noble/curves@npm:1.9.7"
@@ -4133,6 +4145,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "squid@workspace:."
   dependencies:
+    "@luckyweb3/subsquid-ink-v6-decoder": "file:./packages/subsquid-ink-v6-decoder"
     "@polkadot/util": "npm:^13.5.7"
     "@polkadot/util-crypto": "npm:^13.5.7"
     "@subsquid/big-decimal": "npm:^1.0.0"

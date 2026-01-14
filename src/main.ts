@@ -7,7 +7,31 @@ import { encodeAddress } from '@polkadot/util-crypto'
 import {processor, ProcessorContext} from './processor'
 import {Contract, Game, GameStartedEvent, GuessSubmittedEvent, ClueGivenEvent} from './model'
 import {events} from './types'
-import {createInkDecoder} from './decoders'
+// ✅ NEW: Unified decoder module (static or runtime)
+// import { createDecoder, DecoderMode } from './decoders'
+// 
+// STATIC mode (recommended - no JSON metadata needed):
+// const decoder = createDecoder({
+//   mode: DecoderMode.STATIC,
+//   contract: 'guess_the_number'
+// })
+//
+// RUNTIME mode (legacy system - requires JSON metadata):
+// const decoder = createDecoder({
+//   mode: DecoderMode.RUNTIME,
+//   metadataPath: './guess_the_number.json',
+//   contractAddress: '0xe75cbd47620dbb2053cf2a98d06840f06baaf141',
+//   eventTypeMapping: { ... }
+// })
+
+// ✅ NEW: Use @luckyweb3/subsquid-ink-v6-decoder package
+// Option 1: STATIC mode (recommended - no JSON metadata needed)
+import { createDecoder, DecoderMode } from '@luckyweb3/subsquid-ink-v6-decoder'
+// Register static decoders for this project
+import './decoders/static-registry'
+
+// Option 2: RUNTIME mode (legacy system - requires JSON metadata)
+// import { createDecoder, DecoderMode } from '../packages/ink-decoder/src'
 import {GameManager, GameEvent} from './services/game-manager'
 import { Logger } from './utils/logger'
 
@@ -16,22 +40,22 @@ Logger.info(`🔗 RPC Endpoint: ${process.env.RPC_PASSET_HUB_WS || 'wss://passet
 Logger.info('📊 Indexing Revive pallet events and game events')
 
 /**
- * Convertit une adresse (objet ou hexadécimale) en format SS58
- * Pour les contrats Revive (EVM), on convertit en format SS58 Substrate
+ * Converts an address (object or hexadecimal) to SS58 format
+ * For Revive contracts (EVM), we convert to Substrate SS58 format
  */
 export function convertToSS58(addressInput: any): string {
     try {
         let hexAddress: string
         
-        // Si c'est déjà une chaîne hexadécimale
+        // If it's already a hexadecimal string
         if (typeof addressInput === 'string') {
             hexAddress = addressInput
         }
-        // Si c'est un objet avec un champ field (format du décodeur générique)
+        // If it's an object with a field property (generic decoder format)
         else if (addressInput && typeof addressInput === 'object' && addressInput.field && Array.isArray(addressInput.field)) {
-            // Convertir le tableau de bytes en hexadécimal
+            // Convert byte array to hexadecimal
             const hexBytes = addressInput.field.map((byte: number) => byte.toString(16).padStart(2, '0')).join('')
-            // Padder à 32 bytes (64 caractères hex) pour Substrate
+            // Pad to 32 bytes (64 hex characters) for Substrate
             const paddedHex = hexBytes.padStart(64, '0')
             hexAddress = `0x${paddedHex}`
         }
@@ -40,18 +64,18 @@ export function convertToSS58(addressInput: any): string {
             return String(addressInput)
         }
 
-        // Vérifier la longueur de l'adresse
+        // Check address length
         const cleanHex = hexAddress.startsWith('0x') ? hexAddress.slice(2) : hexAddress
         
         if (cleanHex.length === 40) {
-            // Adresse EVM (20 bytes) - convertir en SS58 avec padding
+            // EVM address (20 bytes) - convert to SS58 with padding
             Logger.debug(`Converting EVM address: ${hexAddress} (20 bytes)`)
-            const paddedHex = cleanHex.padStart(64, '0') // Padder à 32 bytes
+            const paddedHex = cleanHex.padStart(64, '0') // Pad to 32 bytes
             const ss58Address = encodeAddress(`0x${paddedHex}`, 42)
             Logger.debug(`SS58 result: ${ss58Address}`)
             return ss58Address
         } else if (cleanHex.length === 64) {
-            // Adresse Substrate (32 bytes) - conversion directe
+            // Substrate address (32 bytes) - direct conversion
             Logger.debug(`Converting Substrate address: ${hexAddress} (32 bytes)`)
             const ss58Address = encodeAddress(hexAddress, 42)
             Logger.debug(`SS58 result: ${ss58Address}`)
@@ -66,31 +90,38 @@ export function convertToSS58(addressInput: any): string {
     }
 }
 
-// ✅ CORRECTION: GameManager persistant entre les batches
+// ✅ FIX: Persistent GameManager across batches
 let persistentGameManager = new GameManager()
 
-// ✅ NOUVEAU: Décodeur générique Ink! v6
-const inkDecoder = createInkDecoder({
-    metadataPath: './guess_the_number.json',
-    contractAddress: '0xe75cbd47620dbb2053cf2a98d06840f06baaf141',
-    eventTypeMapping: {
-        'NewGame': 'game_started',
-        'GuessMade': 'guess_submitted',
-        'ClueGiven': 'clue_given'
-    },
-    debugMode: true
+// ✅ NEW: Unified Ink! v6 decoder (STATIC mode - no JSON metadata needed)
+const decoder = createDecoder({
+    mode: DecoderMode.STATIC,
+    contract: 'guess_the_number'
 })
+
+// Alternative: RUNTIME mode (if you prefer to use JSON metadata)
+// const decoder = createDecoder({
+//     mode: DecoderMode.RUNTIME,
+//     metadataPath: './metadata/guess_the_number.json',
+//     contractAddress: '0xe75cbd47620dbb2053cf2a98d06840f06baaf141',
+//     eventTypeMapping: {
+//         'NewGame': 'game_started',
+//         'GuessMade': 'guess_submitted',
+//         'ClueGiven': 'clue_given'
+//     },
+//     debugMode: true
+// })
 
 processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx: ProcessorContext<Store>) => {
     Logger.debug(`Processing ${ctx.blocks.length} blocks`)
     
-    // Utiliser le GameManager persistant
+    // Use persistent GameManager
     const gameManager = persistentGameManager
     
     // Extract events from blocks
     let contractEvents: TypedContractEvent[] = getContractEvents(ctx)
 
-    // Log seulement s'il y a des événements ou en mode debug
+    // Log only if there are events or in debug mode
     if (contractEvents.length > 0 || Logger.getLogLevel() === 'debug') {
         Logger.info(`Found ${contractEvents.length} contract events`)
     }
@@ -98,7 +129,7 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx: Process
     // Process and store data
     let contracts: Map<string, Contract> = await createContracts(ctx, contractEvents)
     
-    // Assigner les contrats aux événements
+    // Assign contracts to events
     for (let event of contractEvents) {
         const contract = contracts.get(event.contractAddress)
         if (contract) {
@@ -106,52 +137,52 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx: Process
         }
     }
     
-        // ✅ CORRECTION: Utiliser le GameManager pour une gestion cohérente des jeux
+        // ✅ FIX: Use GameManager for consistent game management
         let games: Game[] = processGamesWithManager(contractEvents, contracts, gameManager)
 
-        // ✅ CORRECTION: Récupérer les jeux existants de la base et les fusionner
+        // ✅ FIX: Retrieve existing games from database and merge them
         const existingGames = await ctx.store.findBy(Game, {id: In(games.map(g => g.id))})
         const existingGamesMap = new Map<string, Game>()
         existingGames.forEach(game => {
             existingGamesMap.set(game.id, game)
         })
 
-        // Fusionner les jeux existants avec les nouveaux
+        // Merge existing games with new ones
         const mergedGames = new Map<string, Game>()
         
-        // D'abord, ajouter les jeux existants
+        // First, add existing games
         existingGamesMap.forEach((game, id) => {
             mergedGames.set(id, game)
         })
         
-        // Ensuite, mettre à jour avec les nouveaux événements
+        // Then, update with new events
         games.forEach(game => {
             const existingGame = mergedGames.get(game.id)
             if (existingGame) {
-                // ✅ CORRECTION: Mettre à jour TOUS les champs du jeu existant
+                // ✅ FIX: Update ALL fields of existing game
                 existingGame.attempt = game.attempt
                 existingGame.lastGuess = game.lastGuess
                 existingGame.lastClue = game.lastClue
-                // ✅ CORRECTION: Fusionner l'historique des tentatives
+                // ✅ FIX: Merge guess history
                 if (game.guessHistory && game.guessHistory.length > 0) {
                     if (!existingGame.guessHistory) {
                         existingGame.guessHistory = []
                     }
-                    // Ajouter les nouvelles tentatives à l'historique existant
+                    // Add new guesses to existing history
                     game.guessHistory.forEach(newGuess => {
                         const existingGuess = existingGame.guessHistory.find(g => g.attemptNumber === newGuess.attemptNumber)
                         if (existingGuess) {
-                            // Mettre à jour la tentative existante
+                            // Update existing guess
                             existingGuess.guess = newGuess.guess
                             existingGuess.result = newGuess.result
                         } else {
-                            // Ajouter une nouvelle tentative
+                            // Add new guess
                             existingGame.guessHistory.push(newGuess)
                         }
                     })
                 }
             } else {
-                // Ajouter le nouveau jeu
+                // Add new game
                 mergedGames.set(game.id, game)
             }
         })
@@ -161,7 +192,7 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx: Process
         // Batch database operations
         await ctx.store.upsert([...contracts.values()])
         
-        // Sauvegarder les événements typés par type
+        // Save typed events by type
         const gameStartedEvents = contractEvents.filter(e => e instanceof GameStartedEvent)
         const guessSubmittedEvents = contractEvents.filter(e => e instanceof GuessSubmittedEvent)
         const clueGivenEvents = contractEvents.filter(e => e instanceof ClueGivenEvent)
@@ -172,13 +203,13 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx: Process
         
         await ctx.store.upsert(deduplicatedGames)
     
-        // Log seulement s'il y a des événements ou en mode debug
+        // Log only if there are events or in debug mode
         if (contractEvents.length > 0 || Logger.getLogLevel() === 'debug') {
             Logger.info(`Processed ${contractEvents.length} contract events, ${deduplicatedGames.length} games`)
         }
 })
 
-// Supprimé : TransferEvent - focus sur les jeux uniquement
+// Removed: TransferEvent - focus on games only
 
 // Union type for all event types
 type TypedContractEvent = GameStartedEvent | GuessSubmittedEvent | ClueGivenEvent
@@ -240,7 +271,7 @@ function createTypedEvent(
 
 function getContractEvents(ctx: ProcessorContext<Store>): TypedContractEvent[] {
     let contractEvents: TypedContractEvent[] = []
-    const processedEventData = new Set<string>() // Pour éviter les doublons basés sur le contenu décodé
+    const processedEventData = new Set<string>() // To avoid duplicates based on decoded content
     const targetContracts = Logger.getTargetContracts()
     
     for (let block of ctx.blocks) {
@@ -257,7 +288,7 @@ function getContractEvents(ctx: ProcessorContext<Store>): TypedContractEvent[] {
                     const eventData = event.args.data
                     const topics = event.args.topics || []
                     
-                    // Vérifier si c'est un contrat cible
+                    // Check if it's a target contract
                     const isTargetContract = targetContracts.includes(contractAddress.toLowerCase())
                     
                     if (isTargetContract) {
@@ -275,23 +306,23 @@ function getContractEvents(ctx: ProcessorContext<Store>): TypedContractEvent[] {
                     Logger.debug(`EventData: ${eventData}`)
                     Logger.debug(`Topics:`, topics)
                     
-                    // ✅ NOUVEAU: Décoder l'événement avec le décodeur générique Ink! v6
-                    const decodedEvent = inkDecoder.decodeEvent(eventData, topics, contractAddress)
+                    // ✅ NEW: Decode event with unified Ink! v6 decoder
+                    const decodedEvent = decoder.decodeEvent(eventData, topics, contractAddress, block.header.height)
                     
                     if (decodedEvent) {
                         Logger.contractEvent(contractAddress, decodedEvent.eventType.toUpperCase(), `Decoded successfully`, decodedEvent.data)
                         
-                        // Créer une clé unique basée sur les données décodées
+                        // Create unique key based on decoded data
                         const eventDataKey = `${decodedEvent.eventType}-${decodedEvent.data.game_number}-${decodedEvent.data.attempt}-${decodedEvent.data.guess}-${decodedEvent.data.clue || ''}`
                         
-                        // Vérifier si cet événement a déjà été traité (même contenu décodé)
+                        // Check if this event has already been processed (same decoded content)
                         if (processedEventData.has(eventDataKey)) {
                             Logger.debug(`Skipping duplicate decoded event: ${eventDataKey}`)
                             continue
                         }
                         processedEventData.add(eventDataKey)
                         
-                        // Créer l'événement typé selon son type
+                        // Create typed event according to its type
                         const contractAddressSS58 = convertToSS58(contractAddress)
                         const eventId = `${block.header.height}-${eventIndex}-${contractAddressSS58}`
                         const blockTimestamp = new Date(Number((block.header as any).timestamp ?? (block as any).timestamp))
@@ -318,7 +349,7 @@ function getContractEvents(ctx: ProcessorContext<Store>): TypedContractEvent[] {
                     const contractAddress = event.args.contract
                     const deployer = event.args.deployer
                     
-                    // Log seulement si c'est un contrat cible
+                    // Log only if it's a target contract
                     if (targetContracts.includes(contractAddress.toLowerCase())) {
                         Logger.contractEvent(contractAddress, 'CONTRACT_INSTANTIATED', `Block ${block.header.height}`, { deployer })
                     }
@@ -328,14 +359,14 @@ function getContractEvents(ctx: ProcessorContext<Store>): TypedContractEvent[] {
             }
         }
         
-        // Log du traitement du bloc seulement si nécessaire
+        // Log block processing only if necessary
         Logger.blockProcessing(block.header.height, totalEvents, hasTargetEvents)
     }
     
     return contractEvents
 }
 
-// Supprimé : createAccounts et createTransfers - focus sur les jeux uniquement
+// Removed: createAccounts and createTransfers - focus on games only
 
 async function createContracts(ctx: ProcessorContext<Store>, contractEvents: TypedContractEvent[]): Promise<Map<string, Contract>> {
     let contracts = new Map<string, Contract>()
@@ -349,8 +380,8 @@ async function createContracts(ctx: ProcessorContext<Store>, contractEvents: Typ
     // Create new contracts for events
     for (let event of contractEvents) {
         if (!contracts.has(event.contractAddress)) {
-            // Pour les nouveaux événements typés, on ne peut plus extraire le deployer
-            // On utilise une valeur par défaut
+            // For new typed events, we can no longer extract the deployer
+            // Use a default value
             let deployer = 'unknown'
             
             contracts.set(event.contractAddress, new Contract({
@@ -367,9 +398,9 @@ async function createContracts(ctx: ProcessorContext<Store>, contractEvents: Typ
     return contracts
 }
 
-// Cette fonction n'est plus nécessaire car on sauvegarde directement les événements typés
+// This function is no longer needed as we save typed events directly
 
-// ✅ NOUVELLE FONCTION: Traitement des jeux avec GameManager
+// ✅ NEW FUNCTION: Process games with GameManager
 function processGamesWithManager(contractEvents: TypedContractEvent[], contracts: Map<string, Contract>, gameManager: GameManager): Game[] {
     let games: Game[] = []
     
@@ -377,7 +408,7 @@ function processGamesWithManager(contractEvents: TypedContractEvent[], contracts
         try {
         const contract = contracts.get(event.contractAddress)
         if (contract) {
-                // Convertir l'événement typé en format GameEvent
+                // Convert typed event to GameEvent format
                 let gameEvent: GameEvent | null = null
                 
                 if (event instanceof GameStartedEvent) {
@@ -418,7 +449,7 @@ function processGamesWithManager(contractEvents: TypedContractEvent[], contracts
                 }
                 
                 if (gameEvent) {
-                    // Traiter l'événement avec le GameManager
+                    // Process event with GameManager
                     const game = gameManager.processGameEvent(gameEvent, contract)
                     if (game) {
                         games.push(game)
@@ -433,4 +464,4 @@ function processGamesWithManager(contractEvents: TypedContractEvent[], contracts
     return games
 }
 
-// Ancienne fonction supprimée - remplacée par processGamesWithManager
+// Old function removed - replaced by processGamesWithManager

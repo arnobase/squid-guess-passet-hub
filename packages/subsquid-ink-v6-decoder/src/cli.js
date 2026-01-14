@@ -38,6 +38,24 @@
 const fs = require('fs')
 const path = require('path')
 
+// Import the decoder package functions
+// When running as a CLI, we're in lib/ directory, so we can import from the compiled module
+let registerStaticDecoder
+try {
+  // Try to import from local compiled module first (when running from package)
+  const staticModule = require('./static')
+  registerStaticDecoder = staticModule.registerStaticDecoder
+} catch (e) {
+  // Fallback: try to import from the package itself (when installed)
+  try {
+    const packageModule = require('@luckyweb3/subsquid-ink-v6-decoder')
+    registerStaticDecoder = packageModule.registerStaticDecoder
+  } catch (e2) {
+    console.warn('Warning: Could not load registerStaticDecoder, but generation will continue')
+    registerStaticDecoder = null
+  }
+}
+
 /**
  * Parse command line arguments
  * @param {string[]} argv - Process argv array
@@ -715,7 +733,7 @@ function generateEventsTs(metadata) {
 
   const header = '/**\n * Generated event decoders for Ink! contract\n * \n * This file contains SCALE decoders for all contract events.\n * Indexed event arguments are decoded from topics, non-indexed from event data.\n * \n * @generated - Do not edit manually, regenerate with gen-ink-decoder.js\n */\n\n'
 
-  return header + 'import {hexToBytes, bytesToHex, readU8, readU16, readU32, readU64, readU128, readString, readCompactU32, assert} from \'../../support\'\n\n/**\n * Event signature mapping (normalized hex without 0x prefix)\n */\nexport const EVENT_SIGNATURES = {\n' + sigMap + '\n} as const\n\n' + decoders + '\n\n/**\n * Union type of all decodable events\n */\nexport type AnyDecodedEvent =\n' + unionTypes + '\n\n/**\n * Decode an event by signature\n * @param signatureHex - Event signature (topics[0] without 0x)\n * @param dataHex - Event data hex string\n * @param topics - Array of topic hex strings\n * @returns Decoded event or null if signature not found\n */\nexport function decodeEvent(signatureHex: string, dataHex: string, topics: string[]): AnyDecodedEvent | null {\n  switch (signatureHex) {\n' + switchCases + '\n    default: return null\n  }\n}\n'
+  return header + 'import {hexToBytes, bytesToHex, readU8, readU16, readU32, readU64, readU128, readString, readCompactU32, assert} from \'@luckyweb3/subsquid-ink-v6-decoder/support\'\n\n/**\n * Event signature mapping (normalized hex without 0x prefix)\n */\nexport const EVENT_SIGNATURES = {\n' + sigMap + '\n} as const\n\n' + decoders + '\n\n/**\n * Union type of all decodable events\n */\nexport type AnyDecodedEvent =\n' + unionTypes + '\n\n/**\n * Decode an event by signature\n * @param signatureHex - Event signature (topics[0] without 0x)\n * @param dataHex - Event data hex string\n * @param topics - Array of topic hex strings\n * @returns Decoded event or null if signature not found\n */\nexport function decodeEvent(signatureHex: string, dataHex: string, topics: string[]): AnyDecodedEvent | null {\n  switch (signatureHex) {\n' + switchCases + '\n    default: return null\n  }\n}\n'
 }
 
 /**
@@ -726,6 +744,89 @@ function generateEventsTs(metadata) {
  */
 function generateTypesTs() {
   return '/**\n * Generated type definitions for this contract version\n * \n * Currently a placeholder. Future versions may export TypeScript interfaces\n * derived from contract metadata.\n * \n * TODO: Generate TypeScript interfaces for:\n * - Composite types (structs) used in events\n * - Variant types (enums) with proper discriminated unions\n * - Type aliases (AccountId32, Balance, etc.) for better type safety\n * - Helper types for Option<T> and Result<T, E>\n * \n * @generated - Do not edit manually, regenerate with gen-ink-decoder.js\n */\n\nexport {}\n'
+}
+
+/**
+ * Generate static-registry.ts file in src/decoders/
+ * This file registers all static decoders for the project
+ * @param {Array} contracts - Array of contract configurations
+ * @param {string} outRoot - Output root directory (e.g., src/types/ink)
+ */
+function generateStaticRegistry(contracts, outRoot) {
+  // outRoot is typically "src/types/ink", so we need to go up to src/ and then to decoders/
+  // Calculate path: from outRoot (src/types/ink) to src/decoders/
+  const srcDir = path.dirname(path.dirname(outRoot)) // src/
+  const staticRegistryPath = path.join(srcDir, 'decoders', 'static-registry.ts')
+  const staticRegistryDir = path.dirname(staticRegistryPath)
+  
+  // Ensure directory exists
+  if (!fs.existsSync(staticRegistryDir)) {
+    fs.mkdirSync(staticRegistryDir, { recursive: true })
+  }
+  
+  // Calculate relative path from src/decoders/ to src/types/ink
+  const relativePath = path.relative(staticRegistryDir, outRoot).replace(/\\/g, '/')
+  
+  const lines = []
+  lines.push('/**')
+  lines.push(' * Static decoder registry for this project')
+  lines.push(' * ')
+  lines.push(' * This file registers static imports for each generated contract.')
+  lines.push(' * Imports are resolved at build time, which improves performance.')
+  lines.push(' * ')
+  lines.push(' * @generated - Do not edit manually, regenerate with gen-ink-decoder.js')
+  lines.push(' */')
+  lines.push('')
+  lines.push("import { registerStaticDecoder } from '@luckyweb3/subsquid-ink-v6-decoder'")
+  lines.push('')
+  
+  // Generate imports for each contract
+  contracts.forEach(function(contract) {
+    const contractName = sanitizeContractName(contract.name)
+    const importVar = contractName.replace(/-/g, '_')
+    lines.push('// Static import for ' + contract.name)
+    lines.push("import * as " + importVar + "Decoder from '" + relativePath + "/" + contractName + "'")
+  })
+  
+  lines.push('')
+  lines.push('/**')
+  lines.push(' * Register all static decoders available for this project')
+  lines.push(' * This function is called automatically when the module is imported')
+  lines.push(' */')
+  lines.push('export function registerAllStaticDecoders(): void {')
+  
+  // Generate registrations
+  contracts.forEach(function(contract) {
+    const contractName = sanitizeContractName(contract.name)
+    const importVar = contractName.replace(/-/g, '_')
+    lines.push('  // Register decoder for ' + contract.name)
+    lines.push("  registerStaticDecoder('" + contract.name + "', () => " + importVar + "Decoder)")
+  })
+  
+  lines.push('}')
+  lines.push('')
+  lines.push('// Automatically register when module is loaded')
+  lines.push('registerAllStaticDecoders()')
+  lines.push('')
+  
+  write(staticRegistryPath, lines.join('\n'))
+  console.log('Generated static-registry.ts in ' + staticRegistryPath)
+  
+  // Validate that all contracts have been generated and can be registered
+  // The actual registration happens at runtime when static-registry.ts is imported
+  console.log('Validating generated decoders...')
+  contracts.forEach(function(contract) {
+    const contractName = sanitizeContractName(contract.name)
+    const contractPath = path.join(outRoot, contractName)
+    const contractIndexPath = path.join(contractPath, 'index.ts')
+    
+    if (fs.existsSync(contractIndexPath)) {
+      console.log('  ✓ Decoder generated for contract: ' + contract.name)
+    } else {
+      console.warn('  ⚠ Warning: Contract decoder not found: ' + contractIndexPath)
+    }
+  })
+  console.log('Static decoder generation complete using @luckyweb3/subsquid-ink-v6-decoder')
 }
 
 /**
@@ -756,6 +857,9 @@ function generateSingleVersion(contractName, versionTag, metadataPath, addresses
   write(path.join(versionDir, 'index.ts'), generateVersionIndexTs())
   write(path.join(versionDir, 'events.ts'), generateEventsTs(metadata))
   write(path.join(versionDir, 'types.ts'), generateTypesTs())
+  
+  // Note: support.ts functions are now imported from @luckyweb3/subsquid-ink-v6-decoder/support
+  // No need to copy or create a local support.ts file anymore
 
   // Registry
   const registryPath = path.join(outDir, 'registry.ts')
@@ -818,6 +922,9 @@ function generateFromConfig(configPath, outRoot, contractFilter) {
       )
     })
   })
+  
+  // Generate static-registry.ts in src/decoders/
+  generateStaticRegistry(config.contracts, outRoot)
   
   console.log('\n✅ All decoders generated successfully!')
 }

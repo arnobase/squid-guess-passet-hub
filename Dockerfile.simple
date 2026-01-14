@@ -17,18 +17,31 @@ WORKDIR /app
 COPY package.json yarn.lock ./
 COPY tsconfig.json squid.yaml typegen.json passet-hub-metadata.jsonl ./
 
+# Copier le répertoire packages (nécessaire pour les workspaces locaux)
+COPY packages/ ./packages/
+
 # Configurer Yarn et installer les dépendances
 RUN yarn config set nodeLinker node-modules && \
     yarn install --frozen-lockfile && \
     yarn dlx @subsquid/cli@2.0.0
 
+# Note: Le script gen-ink-decoder.js a été déplacé dans le package @luckyweb3/subsquid-ink-v6-decoder
+# Il est accessible via le CLI du package après compilation
+
 # Copier le code source et les fichiers nécessaires
 COPY src/ ./src/
-COPY schema.graphql guess_the_number.json ./
+COPY schema.graphql ./
+COPY metadata/ ./metadata/
 COPY typeorm.config.ts ./
+
+# Compiler le package subsquid-ink-v6-decoder (nécessaire pour gen:decoders)
+# Utiliser npx tsc directement car yarn build ne fonctionne pas dans un sous-répertoire de workspace
+RUN cd packages/subsquid-ink-v6-decoder && npx tsc && cp src/cli.js lib/cli.js
 
 # Générer les types, compiler et générer les migrations
 RUN yarn codegen && \
+    ls -la src/types/ink/ 2>&1 || echo "Directory does not exist yet" && \
+    yarn gen:decoders && \
     yarn build && \
     yarn db:generate
 

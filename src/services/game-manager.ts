@@ -1,5 +1,5 @@
-// 🎮 Gestionnaire de jeux pour l'indexeur Passet Hub
-// Gère la logique métier des jeux de manière cohérente
+// 🎮 Game manager for Passet Hub indexer
+// Manages game business logic in a consistent manner
 
 import { Game } from '../model/generated/game.model'
 import { Contract } from '../model/generated/contract.model'
@@ -26,20 +26,20 @@ export class GameManager {
     private gameEvents = new Map<string, GameEvent[]>()
 
     /**
-     * Traite un événement de jeu et met à jour l'état du jeu
+     * Processes a game event and updates the game state
      */
     processGameEvent(event: GameEvent, contract: Contract): Game | null {
         const contractAddressSS58 = convertToSS58(event.contractAddress)
         const gameKey = `${contractAddressSS58}-${event.gameNumber}`
         
-        // ✅ DEBUG: Log pour voir ce qui se passe
+        // ✅ DEBUG: Log to see what's happening
         console.log(`🎮 Processing event: ${event.eventType} for game ${gameKey}`)
         
-        // Récupérer ou créer le jeu
+        // Get or create the game
         let game = this.games.get(gameKey)
         
         if (!game && event.eventType === 'game_started') {
-            // Créer un nouveau jeu seulement pour l'événement game_started
+            // Create a new game only for game_started event
             game = new Game({
                 id: gameKey,
                 gameNumber: BigInt(event.gameNumber),
@@ -50,69 +50,69 @@ export class GameManager {
                 createdAt: event.timestamp,
                 createdAtBlock: event.blockNumber,
                 contract,
-                guessHistory: [] // ✅ CORRECTION: Initialiser le champ guessHistory
+                guessHistory: [] // ✅ FIX: Initialize guessHistory field
             })
             
             this.games.set(gameKey, game)
-            console.log(`🎮 Nouveau jeu créé: ${gameKey}`)
+            console.log(`🎮 New game created: ${gameKey}`)
         } else if (!game) {
-            // ✅ DEBUG: Log si le jeu n'existe pas pour un événement non-game_started
-            console.log(`⚠️ Jeu non trouvé pour ${event.eventType}: ${gameKey}`)
+            // ✅ DEBUG: Log if game doesn't exist for non-game_started event
+            console.log(`⚠️ Game not found for ${event.eventType}: ${gameKey}`)
             return null
         }
         
         if (game) {
-            // Mettre à jour le jeu selon le type d'événement
+            // Update game according to event type
             switch (event.eventType) {
                 case 'game_started':
-                    // Le jeu est déjà créé, pas besoin de mise à jour
+                    // Game is already created, no need to update
                     break
                     
                 case 'guess_submitted':
-                    // ✅ CORRECTION: Mettre à jour attempt seulement si c'est plus récent
+                    // ✅ FIX: Update attempt only if it's more recent
                     if (event.attemptNumber && event.attemptNumber > game.attempt) {
                         game.attempt = event.attemptNumber
                     }
-                    // ✅ CORRECTION: Toujours mettre à jour lastGuess avec la dernière tentative
+                    // ✅ FIX: Always update lastGuess with the latest attempt
                     if (event.guess !== undefined) {
                         game.lastGuess = event.guess
                     }
                     
-                    // ✅ NOUVEAU: Ajouter à l'historique des tentatives
+                    // ✅ NEW: Add to guess history
                     if (!game.guessHistory) {
                         game.guessHistory = []
                     }
                     const newGuessItem = new GuessHistoryItem({
                         attemptNumber: event.attemptNumber || 0,
                         guess: event.guess || 0,
-                        result: 'Pending' // Sera mis à jour par clue_given
+                        result: 'Pending' // Will be updated by clue_given
                     })
                     game.guessHistory.push(newGuessItem)
                     
-                    console.log(`🎯 Tentative ajoutée à l'historique: ${event.guess} (tentative ${event.attemptNumber})`)
-                    console.log(`📊 Historique actuel: ${game.guessHistory.length} tentatives`)
+                    console.log(`🎯 Guess added to history: ${event.guess} (attempt ${event.attemptNumber})`)
+                    console.log(`📊 Current history: ${game.guessHistory.length} attempts`)
                     break
                     
                 case 'clue_given':
-                    // ✅ CORRECTION: Mettre à jour lastClue seulement si c'est plus récent
+                    // ✅ FIX: Update lastClue only if it's more recent
                     if (event.attemptNumber && event.attemptNumber >= game.attempt) {
                         game.lastClue = event.result
                     }
                     
-                    // ✅ NOUVEAU: Mettre à jour le résultat dans l'historique
+                    // ✅ NEW: Update result in history
                     if (game.guessHistory) {
                         const lastGuess = game.guessHistory[game.guessHistory.length - 1]
                         if (lastGuess && lastGuess.attemptNumber === event.attemptNumber) {
                             lastGuess.result = event.result || 'Unknown'
-                            console.log(`💡 Résultat mis à jour: ${event.result} pour tentative ${event.attemptNumber}`)
+                            console.log(`💡 Result updated: ${event.result} for attempt ${event.attemptNumber}`)
                         }
                     }
                     
-                    console.log(`💡 Indice enregistré: ${event.result}`)
+                    console.log(`💡 Clue recorded: ${event.result}`)
                     break
             }
             
-            // Enregistrer l'événement pour l'historique
+            // Record event for history
             if (!this.gameEvents.has(gameKey)) {
                 this.gameEvents.set(gameKey, [])
             }
@@ -123,28 +123,28 @@ export class GameManager {
     }
 
     /**
-     * Récupère tous les jeux traités
+     * Gets all processed games
      */
     getAllGames(): Game[] {
         return Array.from(this.games.values())
     }
 
     /**
-     * Récupère l'historique des événements d'un jeu
+     * Gets the event history for a game
      */
     getGameEvents(gameId: string): GameEvent[] {
         return this.gameEvents.get(gameId) || []
     }
 
     /**
-     * Vérifie si un jeu existe
+     * Checks if a game exists
      */
     hasGame(gameId: string): boolean {
         return this.games.has(gameId)
     }
 
     /**
-     * Récupère un jeu par son ID
+     * Gets a game by its ID
      */
     getGame(gameId: string): Game | undefined {
         return this.games.get(gameId)

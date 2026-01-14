@@ -1,0 +1,62 @@
+{
+  "name": "@luckyweb3/subsquid-ink-v6-decoder",
+  "version": "1.0.0",
+  "description": "Unified decoder for Ink! v6 contract events in Subsquid indexers. Supports both static (generated) and runtime (metadata-based) decoding modes.",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./support": {
+      "types": "./lib/support.d.ts",
+      "default": "./lib/support.js"
+    }
+  },
+  "bin": {
+    "subsquid-ink-v6-decoder": "./lib/cli.js"
+  },
+  "files": [
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc && cp src/cli.js lib/cli.js",
+    "prepublishOnly": "yarn build"
+  },
+  "keywords": [
+    "subsquid",
+    "ink",
+    "ink-v6",
+    "decoder",
+    "substrate",
+    "blockchain",
+    "indexer",
+    "events",
+    "passet-hub"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arnobase/subsquid-ink-v6-decoder.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "peerDependencies": {
+    "@polkadot/util": "^13.0.0",
+    "@polkadot/util-crypto": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.1",
+    "typescript": "^5.5.2"
+  },
+  "dependencies": {}
+}
+

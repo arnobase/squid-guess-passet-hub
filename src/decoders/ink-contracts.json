@@ -1,0 +1,30 @@
+{
+  "$schema": "./ink-contracts.schema.json",
+  "description": "Configuration for Ink! contracts",
+  "contracts": [
+    {
+      "name": "guess_the_number",
+      "versions": [
+        {
+          "tag": "v0.1.0",
+          "metadata": "../../metadata/guess_the_number.json",
+          "addresses": ["0xe75cbd47620dbb2053cf2a98d06840f06baaf141"],
+          "blockRange": {
+            "from": 1934744,
+            "to": null
+          }
+        },
+        {
+          "tag": "v0.1.2",
+          "metadata": "../../metadata/guess_the_number_0.1.2.json",
+          "addresses": ["0xe75cbd47620dbb2053cf2a98d06840f06baaf141"],
+          "blockRange": {
+            "from": 1934744,
+            "to": null
+          }
+        }
+      ]
+    }
+  ]
+}
+

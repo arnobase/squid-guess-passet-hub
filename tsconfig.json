@@ -1,16 +1,22 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
+    "module": "Node16",
     "target": "es2020",
     "outDir": "lib",
     "rootDir": "src",
+    "baseUrl": ".",
+    "moduleResolution": "node16",
     "strict": true,
     "declaration": false,
     "sourceMap": true,
     "esModuleInterop": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "@luckyweb3/subsquid-ink-v6-decoder": ["packages/subsquid-ink-v6-decoder/lib"]
+    }
   },
   "include": ["src"],
   "exclude": [

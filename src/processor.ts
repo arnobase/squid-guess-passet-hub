@@ -30,18 +30,29 @@ Logger.debug('Types imported, creating processor...')
 const startBlock = parseInt(process.env.START_BLOCK || '1888457')
 const endBlock = parseInt(process.env.END_BLOCK || '0') || undefined
 const finalityConfirmation = parseInt(process.env.FINALITY_CONFIRMATION || '1')
+// Configuration RPC optimisée
+const rpcCapacity = parseInt(process.env.RPC_CAPACITY || '20') // Connexions concurrentes
+const rpcMaxBatchCallSize = parseInt(process.env.RPC_MAX_BATCH_CALL_SIZE || '200') // Appels RPC batchés
+const rpcRequestTimeout = parseInt(process.env.RPC_REQUEST_TIMEOUT || '60000') // Timeout en ms
 
 Logger.info(`Configuration du processor:`)
 Logger.info(`   - Start Block: ${startBlock}`)
 Logger.info(`   - End Block: ${endBlock || 'undefined (continu)'}`)
 Logger.info(`   - Finality Confirmation: ${finalityConfirmation}`)
+Logger.info(`   - RPC Capacity: ${rpcCapacity} connexions`)
+Logger.info(`   - RPC Max Batch Call Size: ${rpcMaxBatchCallSize}`)
+Logger.info(`   - RPC Request Timeout: ${rpcRequestTimeout}ms`)
 Logger.info(`   - Target Contracts: ${Logger.getTargetContracts().join(', ')}`)
 Logger.info(`   - Log Level: ${Logger.getLogLevel()}`)
 
 export const processor = new SubstrateBatchProcessor()
-    // Configuration RPC depuis les variables d'environnement
-    .setDataSource({
-        chain: process.env.RPC_PASSET_HUB_WS || 'wss://passet-hub-paseo.ibp.network'
+    // Configuration RPC optimisée avec setRpcEndpoint() (nouvelle API)
+    // Permet de configurer maxBatchCallSize, capacity, etc.
+    .setRpcEndpoint({
+        url: process.env.RPC_PASSET_HUB_WS || 'wss://passet-hub-paseo.ibp.network',
+        capacity: rpcCapacity,                    // Nombre de connexions concurrentes
+        maxBatchCallSize: rpcMaxBatchCallSize,    // Nombre d'appels RPC batchés
+        requestTimeout: rpcRequestTimeout        // Timeout des requêtes RPC
     })
     // Configuration pour rester en attente des nouveaux blocs
     .setBlockRange({
@@ -49,6 +60,8 @@ export const processor = new SubstrateBatchProcessor()
         to: endBlock
     })
     .setFinalityConfirmation(finalityConfirmation)
+    // Note: La taille des batches est gérée automatiquement par Subsquid
+    // basée sur la taille des blocs et les ressources disponibles
     // Événements de la pallet revive pour les contrats
     .addEvent({
         name: ['Revive.ContractEmitted']

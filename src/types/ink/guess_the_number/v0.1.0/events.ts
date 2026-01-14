@@ -7,7 +7,7 @@
  * @generated - Do not edit manually, regenerate with gen-ink-decoder.js
  */
 
-import {hexToBytes, bytesToHex, readU8, readU16, readU32, readU64, readU128, readString, readCompactU32, assert} from '../../support'
+import {hexToBytes, bytesToHex, readU8, readU16, readU32, readU64, readU128, readString, readCompactU32, assert} from '@luckyweb3/subsquid-ink-v6-decoder/support'
 
 /**
  * Event signature mapping (normalized hex without 0x prefix)

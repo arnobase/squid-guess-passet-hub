@@ -12,12 +12,13 @@
     "db:create": "npx squid-typeorm-migration create",
     "db:clean": "rm -rf db/migrations/*",
     "codegen": "npx squid-substrate-typegen typegen.json",
-    "gen:decoder": "node scripts/gen-ink-decoder.js",
-    "gen:decoders": "node scripts/gen-ink-decoder.js --config ink-contracts.json",
+    "gen:decoder": "node packages/subsquid-ink-v6-decoder/lib/cli.js",
+    "gen:decoders": "node packages/subsquid-ink-v6-decoder/lib/cli.js --config src/decoders/ink-contracts.json",
     "processor": "node -r dotenv/config lib/main.js",
     "serve": "npx @subsquid/graphql-server"
   },
   "dependencies": {
+    "@luckyweb3/subsquid-ink-v6-decoder": "file:./packages/subsquid-ink-v6-decoder",
     "@polkadot/util": "^13.5.7",
     "@polkadot/util-crypto": "^13.5.7",
     "@subsquid/big-decimal": "^1.0.0",
