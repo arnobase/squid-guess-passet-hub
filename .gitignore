@@ -91,3 +91,5 @@ Desktop.ini
 # Subsquid specific
 /squid-temp
 /.squid
+
+/AI_DOCS/*
