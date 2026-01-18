@@ -108,12 +108,12 @@ export class StaticDecoder implements Decoder {
     this.decoderModule = loadStaticDecoder(this.contractName)
   }
 
-  decodeEvent(
+  async decodeEvent(
     eventData: string,
     topics: string[],
     contractAddress?: string,
     blockHeight?: number
-  ): DecodedEvent | null {
+  ): Promise<DecodedEvent | null> {
     if (!topics || topics.length === 0) {
       return null
     }
@@ -125,7 +125,7 @@ export class StaticDecoder implements Decoder {
 
     // Utiliser decodeEventWithRouting si disponible (avec routing de version)
     if (this.decoderModule.decodeEventWithRouting && contractAddress && blockHeight !== undefined) {
-      const decoded = this.decoderModule.decodeEventWithRouting(
+      const decoded = await this.decoderModule.decodeEventWithRouting(
         signatureHex,
         eventData,
         topics,
@@ -140,6 +140,11 @@ export class StaticDecoder implements Decoder {
       }
 
       // Adapter le format de sortie pour correspondre à DecodedEvent
+      if (!decoded.eventType) {
+        console.warn(`[StaticDecoder] decoded.eventType is undefined. Decoded object:`, JSON.stringify(decoded))
+        console.warn(`  Signature: ${signatureHex}`)
+        console.warn(`  Topics:`, topics)
+      }
       return {
         eventType: decoded.eventType,
         data: decoded.data || {},
@@ -150,12 +155,16 @@ export class StaticDecoder implements Decoder {
     // Fallback : utiliser decodeEvent directement depuis la version par défaut
     // Le module peut exporter directement decodeEvent ou via une version spécifique
     if (this.decoderModule.decodeEvent) {
-      const decoded = this.decoderModule.decodeEvent(signatureHex, eventData, topics)
+      const decoded = await this.decoderModule.decodeEvent(signatureHex, eventData, topics)
       
       if (!decoded) {
         return null
       }
 
+      if (!decoded.eventType) {
+        console.warn(`[StaticDecoder] decoded.eventType is undefined (fallback). Decoded object:`, JSON.stringify(decoded))
+        console.warn(`  Signature: ${signatureHex}`)
+      }
       return {
         eventType: decoded.eventType,
         data: decoded.data || {},
@@ -165,7 +174,7 @@ export class StaticDecoder implements Decoder {
 
     // Essayer avec v0_1_0 comme fallback
     if (this.decoderModule.v0_1_0 && this.decoderModule.v0_1_0.decodeEvent) {
-      const decoded = this.decoderModule.v0_1_0.decodeEvent(signatureHex, eventData, topics)
+      const decoded = await this.decoderModule.v0_1_0.decodeEvent(signatureHex, eventData, topics)
       
       if (!decoded) {
         return null

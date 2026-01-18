@@ -32,12 +32,14 @@ export interface Decoder {
    * @param contractAddress - Adresse du contrat (optionnel, pour routing)
    * @param blockHeight - Hauteur du bloc (optionnel, pour routing de version)
    * @returns Événement décodé ou null si non décodable
+   * 
+   * Note: Cette méthode peut être async si le décodeur utilise des imports dynamiques
    */
   decodeEvent(
     eventData: string,
     topics: string[],
     contractAddress?: string,
     blockHeight?: number
-  ): DecodedEvent | null
+  ): DecodedEvent | null | Promise<DecodedEvent | null>
 }
 
