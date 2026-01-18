@@ -2,6 +2,9 @@ import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, S
 import {GameStartedEvent} from "./gameStartedEvent.model"
 import {GuessSubmittedEvent} from "./guessSubmittedEvent.model"
 import {ClueGivenEvent} from "./clueGivenEvent.model"
+import {GameOverEvent} from "./gameOverEvent.model"
+import {GameCancelledEvent} from "./gameCancelledEvent.model"
+import {MaxAttemptsUpdatedEvent} from "./maxAttemptsUpdatedEvent.model"
 
 @Entity_()
 export class Contract {
@@ -32,4 +35,13 @@ export class Contract {
 
     @OneToMany_(() => ClueGivenEvent, e => e.contract)
     clueGivenEvents!: ClueGivenEvent[]
+
+    @OneToMany_(() => GameOverEvent, e => e.contract)
+    gameOverEvents!: GameOverEvent[]
+
+    @OneToMany_(() => GameCancelledEvent, e => e.contract)
+    gameCancelledEvents!: GameCancelledEvent[]
+
+    @OneToMany_(() => MaxAttemptsUpdatedEvent, e => e.contract)
+    maxAttemptsUpdatedEvents!: MaxAttemptsUpdatedEvent[]
 }

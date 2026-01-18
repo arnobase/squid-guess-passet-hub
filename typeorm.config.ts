@@ -3,6 +3,9 @@ import { Contract } from './src/model/generated/contract.model'
 import { GameStartedEvent } from './src/model/generated/gameStartedEvent.model'
 import { GuessSubmittedEvent } from './src/model/generated/guessSubmittedEvent.model'
 import { ClueGivenEvent } from './src/model/generated/clueGivenEvent.model'
+import { GameOverEvent } from './src/model/generated/gameOverEvent.model'
+import { GameCancelledEvent } from './src/model/generated/gameCancelledEvent.model'
+import { MaxAttemptsUpdatedEvent } from './src/model/generated/maxAttemptsUpdatedEvent.model'
 import { Game } from './src/model/generated/game.model'
 
 const dbConfig = new DataSource({
@@ -12,7 +15,16 @@ const dbConfig = new DataSource({
   database: process.env.DB_NAME || 'postgres',
   username: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASS || 'postgres',
-  entities: [Contract, GameStartedEvent, GuessSubmittedEvent, ClueGivenEvent, Game],
+  entities: [
+    Contract, 
+    GameStartedEvent, 
+    GuessSubmittedEvent, 
+    ClueGivenEvent, 
+    GameOverEvent,
+    GameCancelledEvent,
+    MaxAttemptsUpdatedEvent,
+    Game
+  ],
   migrations: [__dirname + '/db/migrations/*.js'],
   migrationsTableName: 'migrations'
 })

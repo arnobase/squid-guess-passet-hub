@@ -27,7 +27,7 @@ import {events} from './types'
 Logger.debug('Types imported, creating processor...')
 
 // Configuration depuis les variables d'environnement
-const startBlock = parseInt(process.env.START_BLOCK || '1888457')
+const startBlock = parseInt(process.env.START_BLOCK || '13411865')
 const endBlock = parseInt(process.env.END_BLOCK || '0') || undefined
 const finalityConfirmation = parseInt(process.env.FINALITY_CONFIRMATION || '1')
 // Configuration RPC optimisée
@@ -46,10 +46,11 @@ Logger.info(`   - Target Contracts: ${Logger.getTargetContracts().join(', ')}`)
 Logger.info(`   - Log Level: ${Logger.getLogLevel()}`)
 
 export const processor = new SubstrateBatchProcessor()
-    // Configuration RPC optimisée avec setRpcEndpoint() (nouvelle API)
-    // Permet de configurer maxBatchCallSize, capacity, etc.
+    // Utilise SQD Network comme source principale de données (archive historique)
+    .setGateway('https://v2.archive.subsquid.io/network/asset-hub-westend')
+    // Configuration RPC pour les mises à jour en temps réel
     .setRpcEndpoint({
-        url: process.env.RPC_PASSET_HUB_WS || 'wss://passet-hub-paseo.ibp.network',
+        url: process.env.RPC_PASSET_HUB_WS || 'wss://westend-asset-hub-rpc.polkadot.io',
         capacity: rpcCapacity,                    // Nombre de connexions concurrentes
         maxBatchCallSize: rpcMaxBatchCallSize,    // Nombre d'appels RPC batchés
         requestTimeout: rpcRequestTimeout        // Timeout des requêtes RPC

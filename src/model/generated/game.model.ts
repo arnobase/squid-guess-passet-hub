@@ -1,4 +1,4 @@
-import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, BigIntColumn as BigIntColumn_, Index as Index_, StringColumn as StringColumn_, IntColumn as IntColumn_, DateTimeColumn as DateTimeColumn_, ManyToOne as ManyToOne_} from "@subsquid/typeorm-store"
+import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, BigIntColumn as BigIntColumn_, Index as Index_, StringColumn as StringColumn_, IntColumn as IntColumn_, DateTimeColumn as DateTimeColumn_, ManyToOne as ManyToOne_, BooleanColumn as BooleanColumn_} from "@subsquid/typeorm-store"
 import * as marshal from "./marshal"
 import {Contract} from "./contract.model"
 import {GuessHistoryItem} from "./_guessHistoryItem"
@@ -48,4 +48,19 @@ export class Game {
 
     @Column_("jsonb", {transformer: {to: obj => obj.map((val: any) => val.toJSON()), from: obj => obj == null ? undefined : marshal.fromList(obj, val => new GuessHistoryItem(undefined, marshal.nonNull(val)))}, nullable: false})
     guessHistory!: (GuessHistoryItem)[]
+
+    @BooleanColumn_({nullable: true})
+    isOver!: boolean | undefined | null
+
+    @BooleanColumn_({nullable: true})
+    won!: boolean | undefined | null
+
+    @IntColumn_({nullable: true})
+    target!: number | undefined | null
+
+    @BooleanColumn_({nullable: true})
+    cancelled!: boolean | undefined | null
+
+    @IntColumn_({nullable: true})
+    maxAttempts!: number | undefined | null
 }

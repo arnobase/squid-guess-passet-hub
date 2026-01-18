@@ -5,7 +5,7 @@ import assert from 'assert'
 import { encodeAddress } from '@polkadot/util-crypto'
 
 import {processor, ProcessorContext} from './processor'
-import {Contract, Game, GameStartedEvent, GuessSubmittedEvent, ClueGivenEvent} from './model'
+import {Contract, Game, GameStartedEvent, GuessSubmittedEvent, ClueGivenEvent, GameOverEvent, GameCancelledEvent, MaxAttemptsUpdatedEvent} from './model'
 import {events} from './types'
 // ✅ NEW: Unified decoder module (static or runtime)
 // import { createDecoder, DecoderMode } from './decoders'
@@ -36,13 +36,30 @@ import {GameManager, GameEvent} from './services/game-manager'
 import { Logger } from './utils/logger'
 
 Logger.info('🚀 Starting Passet Hub Indexer...')
-Logger.info(`🔗 RPC Endpoint: ${process.env.RPC_PASSET_HUB_WS || 'wss://passet-hub-paseo.ibp.network'}`)
+Logger.info(`🔗 RPC Endpoint: ${process.env.RPC_PASSET_HUB_WS || 'wss://westend-asset-hub-rpc.polkadot.io'}`)
 Logger.info('📊 Indexing Revive pallet events and game events')
 
 /**
  * Converts an address (object or hexadecimal) to SS58 format
  * For Revive contracts (EVM), we convert to Substrate SS58 format
  */
+/**
+ * Serialize data with BigInt support for logging
+ * @param data - Data to serialize
+ * @returns Serialized string with BigInt converted to string
+ */
+function serializeForLogging(data: any): string {
+    return JSON.stringify(data, (key, value) => {
+        if (typeof value === 'bigint') {
+            return value.toString()
+        }
+        if (value instanceof Uint8Array) {
+            return Array.from(value).map(b => b.toString(16).padStart(2, '0')).join('')
+        }
+        return value
+    }, 2)
+}
+
 export function convertToSS58(addressInput: any): string {
     try {
         let hexAddress: string
@@ -119,11 +136,20 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx: Process
     const gameManager = persistentGameManager
     
     // Extract events from blocks
-    let contractEvents: TypedContractEvent[] = getContractEvents(ctx)
+    let contractEvents: TypedContractEvent[] = await getContractEvents(ctx)
 
-    // Log only if there are events or in debug mode
-    if (contractEvents.length > 0 || Logger.getLogLevel() === 'debug') {
-        Logger.info(`Found ${contractEvents.length} contract events`)
+    // Compact batch summary
+    if (contractEvents.length > 0) {
+        const eventSummary = contractEvents.map(evt => {
+            const eventType = evt instanceof GameStartedEvent ? 'NEW_GAME' :
+                            evt instanceof GuessSubmittedEvent ? 'GUESS_MADE' :
+                            evt instanceof ClueGivenEvent ? 'CLUE_GIVEN' :
+                            evt instanceof GameOverEvent ? 'GAME_OVER' :
+                            evt instanceof GameCancelledEvent ? 'GAME_CANCELLED' :
+                            evt instanceof MaxAttemptsUpdatedEvent ? 'MAX_ATTEMPTS' : 'UNKNOWN'
+            return `${eventType}#${evt.gameNumber}@${evt.blockNumber}`
+        }).join(', ')
+        Logger.info(`📦 Batch: ${contractEvents.length} event(s) - ${eventSummary}`)
     }
 
     // Process and store data
@@ -137,8 +163,21 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx: Process
         }
     }
     
-        // ✅ FIX: Use GameManager for consistent game management
-        let games: Game[] = processGamesWithManager(contractEvents, contracts, gameManager)
+    // ✅ FIX: Load existing games from DB into GameManager before processing events
+    // This ensures that games created in previous batches are available
+    if (contractEvents.length > 0) {
+        const gameKeys = contractEvents.map(event => {
+            const contractAddressSS58 = convertToSS58(event.contractAddress)
+            return `${contractAddressSS58}-${event.gameNumber.toString()}`
+        })
+        const existingGames = await ctx.store.findBy(Game, {id: In(gameKeys)})
+        existingGames.forEach(game => {
+            gameManager.loadGame(game)
+        })
+    }
+    
+    // ✅ FIX: Use GameManager for consistent game management
+    let games: Game[] = processGamesWithManager(contractEvents, contracts, gameManager)
 
         // ✅ FIX: Retrieve existing games from database and merge them
         const existingGames = await ctx.store.findBy(Game, {id: In(games.map(g => g.id))})
@@ -163,6 +202,12 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx: Process
                 existingGame.attempt = game.attempt
                 existingGame.lastGuess = game.lastGuess
                 existingGame.lastClue = game.lastClue
+                // ✅ NEW: Update v0.1.3 fields
+                if (game.isOver !== undefined) existingGame.isOver = game.isOver
+                if (game.won !== undefined) existingGame.won = game.won
+                if (game.target !== undefined && game.target !== null) existingGame.target = game.target
+                if (game.cancelled !== undefined) existingGame.cancelled = game.cancelled
+                if (game.maxAttempts !== undefined && game.maxAttempts !== null) existingGame.maxAttempts = game.maxAttempts
                 // ✅ FIX: Merge guess history
                 if (game.guessHistory && game.guessHistory.length > 0) {
                     if (!existingGame.guessHistory) {
@@ -196,23 +241,35 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx: Process
         const gameStartedEvents = contractEvents.filter(e => e instanceof GameStartedEvent)
         const guessSubmittedEvents = contractEvents.filter(e => e instanceof GuessSubmittedEvent)
         const clueGivenEvents = contractEvents.filter(e => e instanceof ClueGivenEvent)
+        const gameOverEvents = contractEvents.filter(e => e instanceof GameOverEvent)
+        const gameCancelledEvents = contractEvents.filter(e => e instanceof GameCancelledEvent)
+        const maxAttemptsUpdatedEvents = contractEvents.filter(e => e instanceof MaxAttemptsUpdatedEvent)
         
         if (gameStartedEvents.length > 0) await ctx.store.insert(gameStartedEvents)
         if (guessSubmittedEvents.length > 0) await ctx.store.insert(guessSubmittedEvents)
         if (clueGivenEvents.length > 0) await ctx.store.insert(clueGivenEvents)
+        if (gameOverEvents.length > 0) await ctx.store.insert(gameOverEvents)
+        if (gameCancelledEvents.length > 0) await ctx.store.insert(gameCancelledEvents)
+        if (maxAttemptsUpdatedEvents.length > 0) await ctx.store.insert(maxAttemptsUpdatedEvents)
         
         await ctx.store.upsert(deduplicatedGames)
     
         // Log only if there are events or in debug mode
         if (contractEvents.length > 0 || Logger.getLogLevel() === 'debug') {
-            Logger.info(`Processed ${contractEvents.length} contract events, ${deduplicatedGames.length} games`)
+            Logger.info(`✅ Processed: ${contractEvents.length} event(s), ${deduplicatedGames.length} game(s)`)
         }
 })
 
 // Removed: TransferEvent - focus on games only
 
 // Union type for all event types
-type TypedContractEvent = GameStartedEvent | GuessSubmittedEvent | ClueGivenEvent
+type TypedContractEvent = 
+    | GameStartedEvent 
+    | GuessSubmittedEvent 
+    | ClueGivenEvent
+    | GameOverEvent
+    | GameCancelledEvent
+    | MaxAttemptsUpdatedEvent
 
 // Function to create typed events based on decoded data
 function createTypedEvent(
@@ -232,7 +289,7 @@ function createTypedEvent(
     }
 
     switch (decodedEvent.eventType) {
-        case 'game_started':
+        case 'new_game':
             const playerAddress = decodedEvent.data.player || ''
             const ss58Address = convertToSS58(playerAddress)
             Logger.debug(`Address conversion: ${playerAddress} -> ${ss58Address}`)
@@ -244,22 +301,66 @@ function createTypedEvent(
                 maxNumber: decodedEvent.data.max_number || 0
             })
         
-        case 'guess_submitted':
+        case 'guess_made':
+            const guessMadePlayer = decodedEvent.data.player || ''
+            const guessMadeSS58 = convertToSS58(guessMadePlayer)
             return new GuessSubmittedEvent({
                 ...baseEvent,
                 gameNumber: BigInt(decodedEvent.data.game_number || 0),
+                player: guessMadeSS58,
                 attemptNumber: decodedEvent.data.attempt || 0,
                 guess: decodedEvent.data.guess || 0
             })
         
         case 'clue_given':
+            const clueGivenPlayer = decodedEvent.data.player || ''
+            const clueGivenSS58 = convertToSS58(clueGivenPlayer)
             return new ClueGivenEvent({
                 ...baseEvent,
                 gameNumber: BigInt(decodedEvent.data.game_number || 0),
+                player: clueGivenSS58,
                 attemptNumber: decodedEvent.data.attempt || 0,
                 guess: decodedEvent.data.guess || 0,
                 result: decodedEvent.data.clue || ''
             })
+        
+        case 'game_over':
+            const gameOverPlayer = decodedEvent.data.player || ''
+            const gameOverSS58 = convertToSS58(gameOverPlayer)
+            return new GameOverEvent({
+                ...baseEvent,
+                gameNumber: BigInt(decodedEvent.data.game_number || 0),
+                player: gameOverSS58,
+                win: decodedEvent.data.win || false,
+                target: decodedEvent.data.target || 0
+            })
+        
+        case 'game_cancelled':
+            const cancelledPlayer = decodedEvent.data.player || ''
+            const cancelledSS58 = convertToSS58(cancelledPlayer)
+            return new GameCancelledEvent({
+                ...baseEvent,
+                gameNumber: BigInt(decodedEvent.data.game_number || 0),
+                player: cancelledSS58
+            })
+        
+        case 'max_attempts_updated':
+            const maxAttemptsPlayer = decodedEvent.data.player || ''
+            const maxAttemptsSS58 = convertToSS58(maxAttemptsPlayer)
+            return new MaxAttemptsUpdatedEvent({
+                ...baseEvent,
+                gameNumber: BigInt(decodedEvent.data.game_number || 0),
+                player: maxAttemptsSS58,
+                maxAttempts: decodedEvent.data.max_attempts || 0
+            })
+        
+        case 'message_queued':
+        case 'message_processed':
+        case 'role_granted':
+        case 'role_revoked':
+        case 'meta_transaction_decoded':
+            // These events are not game-related, skip them silently
+            return null
         
         default:
             Logger.warn(`Unknown event type: ${decodedEvent.eventType}`)
@@ -269,7 +370,7 @@ function createTypedEvent(
 
 // Supprimé : getTransferEvents - focus sur les jeux uniquement
 
-function getContractEvents(ctx: ProcessorContext<Store>): TypedContractEvent[] {
+async function getContractEvents(ctx: ProcessorContext<Store>): Promise<TypedContractEvent[]> {
     let contractEvents: TypedContractEvent[] = []
     const processedEventData = new Set<string>() // To avoid duplicates based on decoded content
     const targetContracts = Logger.getTargetContracts()
@@ -277,6 +378,7 @@ function getContractEvents(ctx: ProcessorContext<Store>): TypedContractEvent[] {
     for (let block of ctx.blocks) {
         let hasTargetEvents = false
         let totalEvents = 0
+        let targetContractEvents = 0
         
         for (let eventIndex = 0; eventIndex < block.events.length; eventIndex++) {
             const event = block.events[eventIndex]
@@ -291,33 +393,46 @@ function getContractEvents(ctx: ProcessorContext<Store>): TypedContractEvent[] {
                     // Check if it's a target contract
                     const isTargetContract = targetContracts.includes(contractAddress.toLowerCase())
                     
-                    if (isTargetContract) {
-                        hasTargetEvents = true
-                        Logger.contractEvent(contractAddress, 'CONTRACT_EMITTED', `Block ${block.header.height}`, {
-                            data: eventData,
-                            topics: topics.length
-                        })
-                    } else {
-                        Logger.debug(`Skipping non-target contract: ${contractAddress}`)
+                    if (!isTargetContract) {
                         continue
                     }
                     
-                    Logger.debug(`Contract: ${contractAddress}`)
-                    Logger.debug(`EventData: ${eventData}`)
-                    Logger.debug(`Topics:`, topics)
+                    hasTargetEvents = true
+                    targetContractEvents++
                     
-                    // ✅ NEW: Decode event with unified Ink! v6 decoder
-                    const decodedEvent = decoder.decodeEvent(eventData, topics, contractAddress, block.header.height)
+                    // Decode event with unified Ink! v6 decoder
+                    const decodedEvent = await decoder.decodeEvent(eventData, topics, contractAddress, block.header.height)
+                    
+                    // Debug: log what we get from decoder
+                    if (!decodedEvent) {
+                        Logger.debug(`No decoded event for contract ${contractAddress} at block ${block.header.height}`)
+                        continue
+                    }
+                    
+                    // Debug: check if eventType exists
+                    if (!decodedEvent.eventType) {
+                        Logger.warn(`Decoded event but no eventType. Decoded: ${JSON.stringify(decodedEvent)}`)
+                        Logger.debug(`  EventData: ${eventData}`)
+                        Logger.debug(`  Topics: ${JSON.stringify(topics)}`)
+                        continue
+                    }
                     
                     if (decodedEvent) {
-                        Logger.contractEvent(contractAddress, decodedEvent.eventType.toUpperCase(), `Decoded successfully`, decodedEvent.data)
+                        // Skip non-game events silently
+                        if (['message_queued', 'message_processed', 'role_granted', 'role_revoked', 'meta_transaction_decoded'].includes(decodedEvent.eventType)) {
+                            continue
+                        }
+                        // Compact log for game events
+                        const gameNum = decodedEvent.data.game_number ? ` Game #${decodedEvent.data.game_number}` : ''
+                        // Vérifier que eventType existe avant d'appeler toUpperCase
+                        const eventTypeUpper = decodedEvent.eventType ? decodedEvent.eventType.toUpperCase() : 'UNKNOWN'
+                        Logger.contractEvent(contractAddress, eventTypeUpper, `Block ${block.header.height}${gameNum}`, decodedEvent.data)
                         
                         // Create unique key based on decoded data
-                        const eventDataKey = `${decodedEvent.eventType}-${decodedEvent.data.game_number}-${decodedEvent.data.attempt}-${decodedEvent.data.guess}-${decodedEvent.data.clue || ''}`
+                        const eventDataKey = `${decodedEvent.eventType}-${decodedEvent.data.game_number || ''}-${decodedEvent.data.attempt || ''}-${block.header.height}-${eventIndex}`
                         
-                        // Check if this event has already been processed (same decoded content)
+                        // Check if this event has already been processed
                         if (processedEventData.has(eventDataKey)) {
-                            Logger.debug(`Skipping duplicate decoded event: ${eventDataKey}`)
                             continue
                         }
                         processedEventData.add(eventDataKey)
@@ -338,7 +453,8 @@ function getContractEvents(ctx: ProcessorContext<Store>): TypedContractEvent[] {
                             contractEvents.push(typedEvent)
                         }
                     } else {
-                        Logger.debug(`Skipping undecodable event from contract ${contractAddress}`, { rawData: eventData })
+                        // Only log undecodable events in debug mode
+                        Logger.debug(`Undecodable event from ${contractAddress}@${block.header.height}`)
                     }
                 } catch (error) {
                     Logger.error(`Error processing Revive.ContractEmitted at block ${block.header.height}`, error)
@@ -359,12 +475,14 @@ function getContractEvents(ctx: ProcessorContext<Store>): TypedContractEvent[] {
             }
         }
         
-        // Log block processing only if necessary
-        Logger.blockProcessing(block.header.height, totalEvents, hasTargetEvents)
-    }
-    
-    return contractEvents
-}
+        // Only log block processing in debug mode or if there are target events
+        if (hasTargetEvents || Logger.getLogLevel() === 'debug') {
+            Logger.blockProcessing(block.header.height, totalEvents, hasTargetEvents)
+        }
+            }
+            
+            return contractEvents
+        }
 
 // Removed: createAccounts and createTransfers - focus on games only
 
@@ -417,7 +535,7 @@ function processGamesWithManager(contractEvents: TypedContractEvent[], contracts
                 blockNumber: event.blockNumber,
                 timestamp: event.timestamp,
                         contractAddress: event.contractAddress,
-                        eventType: 'game_started',
+                        eventType: 'new_game',
                         gameNumber: event.gameNumber.toString(),
                 player: event.player,
                 minNumber: event.minNumber,
@@ -429,7 +547,7 @@ function processGamesWithManager(contractEvents: TypedContractEvent[], contracts
                         blockNumber: event.blockNumber,
                         timestamp: event.timestamp,
                         contractAddress: event.contractAddress,
-                        eventType: 'guess_submitted',
+                        eventType: 'guess_made',
                         gameNumber: event.gameNumber.toString(),
                         attemptNumber: event.attemptNumber,
                         guess: event.guess
@@ -445,6 +563,39 @@ function processGamesWithManager(contractEvents: TypedContractEvent[], contracts
                         attemptNumber: event.attemptNumber,
                         guess: event.guess,
                         result: event.result
+                    }
+                } else if (event instanceof GameOverEvent) {
+                    gameEvent = {
+                        id: event.id,
+                        blockNumber: event.blockNumber,
+                        timestamp: event.timestamp,
+                        contractAddress: event.contractAddress,
+                        eventType: 'game_over',
+                        gameNumber: event.gameNumber.toString(),
+                        player: event.player,
+                        win: event.win,
+                        target: event.target
+                    }
+                } else if (event instanceof GameCancelledEvent) {
+                    gameEvent = {
+                        id: event.id,
+                        blockNumber: event.blockNumber,
+                        timestamp: event.timestamp,
+                        contractAddress: event.contractAddress,
+                        eventType: 'game_cancelled',
+                        gameNumber: event.gameNumber.toString(),
+                        player: event.player
+                    }
+                } else if (event instanceof MaxAttemptsUpdatedEvent) {
+                    gameEvent = {
+                        id: event.id,
+                        blockNumber: event.blockNumber,
+                        timestamp: event.timestamp,
+                        contractAddress: event.contractAddress,
+                        eventType: 'max_attempts_updated',
+                        gameNumber: event.gameNumber.toString(),
+                        player: event.player,
+                        maxAttempts: event.maxAttempts
                     }
                 }
                 

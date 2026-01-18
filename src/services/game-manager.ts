@@ -11,7 +11,13 @@ export interface GameEvent {
     blockNumber: number
     timestamp: Date
     contractAddress: string
-    eventType: 'game_started' | 'guess_submitted' | 'clue_given'
+    eventType: 
+        | 'new_game' 
+        | 'guess_made' 
+        | 'clue_given'
+        | 'game_over'
+        | 'game_cancelled'
+        | 'max_attempts_updated'
     gameNumber: string
     player?: string
     minNumber?: number
@@ -19,11 +25,28 @@ export interface GameEvent {
     attemptNumber?: number
     guess?: number
     result?: string
+    win?: boolean
+    target?: number
+    maxAttempts?: number
 }
 
 export class GameManager {
     private games = new Map<string, Game>()
     private gameEvents = new Map<string, GameEvent[]>()
+
+    /**
+     * Load a game into the manager (from DB or memory)
+     */
+    loadGame(game: Game): void {
+        this.games.set(game.id, game)
+    }
+
+    /**
+     * Get a game by key
+     */
+    getGame(gameKey: string): Game | undefined {
+        return this.games.get(gameKey)
+    }
 
     /**
      * Processes a game event and updates the game state
@@ -32,14 +55,11 @@ export class GameManager {
         const contractAddressSS58 = convertToSS58(event.contractAddress)
         const gameKey = `${contractAddressSS58}-${event.gameNumber}`
         
-        // ✅ DEBUG: Log to see what's happening
-        console.log(`🎮 Processing event: ${event.eventType} for game ${gameKey}`)
-        
         // Get or create the game
         let game = this.games.get(gameKey)
         
-        if (!game && event.eventType === 'game_started') {
-            // Create a new game only for game_started event
+        if (!game && event.eventType === 'new_game') {
+            // Create a new game only for new_game event
             game = new Game({
                 id: gameKey,
                 gameNumber: BigInt(event.gameNumber),
@@ -50,25 +70,37 @@ export class GameManager {
                 createdAt: event.timestamp,
                 createdAtBlock: event.blockNumber,
                 contract,
-                guessHistory: [] // ✅ FIX: Initialize guessHistory field
+                guessHistory: []
             })
-            
             this.games.set(gameKey, game)
-            console.log(`🎮 New game created: ${gameKey}`)
         } else if (!game) {
-            // ✅ DEBUG: Log if game doesn't exist for non-game_started event
-            console.log(`⚠️ Game not found for ${event.eventType}: ${gameKey}`)
-            return null
+            // Create a stub game if event arrives before new_game
+            game = new Game({
+                id: gameKey,
+                gameNumber: BigInt(event.gameNumber),
+                player: event.player || 'unknown',
+                minNumber: 0,
+                maxNumber: 100,
+                attempt: 0,
+                createdAt: event.timestamp,
+                createdAtBlock: event.blockNumber,
+                contract,
+                guessHistory: [],
+                isOver: false,
+                won: false,
+                cancelled: false
+            })
+            this.games.set(gameKey, game)
         }
         
         if (game) {
             // Update game according to event type
             switch (event.eventType) {
-                case 'game_started':
+                case 'new_game':
                     // Game is already created, no need to update
                     break
                     
-                case 'guess_submitted':
+                case 'guess_made':
                     // ✅ FIX: Update attempt only if it's more recent
                     if (event.attemptNumber && event.attemptNumber > game.attempt) {
                         game.attempt = event.attemptNumber
@@ -88,9 +120,6 @@ export class GameManager {
                         result: 'Pending' // Will be updated by clue_given
                     })
                     game.guessHistory.push(newGuessItem)
-                    
-                    console.log(`🎯 Guess added to history: ${event.guess} (attempt ${event.attemptNumber})`)
-                    console.log(`📊 Current history: ${game.guessHistory.length} attempts`)
                     break
                     
                 case 'clue_given':
@@ -109,6 +138,23 @@ export class GameManager {
                     }
                     
                     console.log(`💡 Clue recorded: ${event.result}`)
+                    break
+                
+                case 'game_over':
+                    game.isOver = true
+                    game.won = event.win || false
+                    game.target = event.target || null
+                    console.log(`🏁 Game over: ${event.win ? 'Won' : 'Lost'} - Target: ${event.target}`)
+                    break
+                
+                case 'game_cancelled':
+                    game.cancelled = true
+                    console.log(`❌ Game cancelled: ${event.gameNumber}`)
+                    break
+                
+                case 'max_attempts_updated':
+                    game.maxAttempts = event.maxAttempts || null
+                    console.log(`📊 Max attempts updated: ${event.maxAttempts}`)
                     break
             }
             
@@ -141,12 +187,5 @@ export class GameManager {
      */
     hasGame(gameId: string): boolean {
         return this.games.has(gameId)
-    }
-
-    /**
-     * Gets a game by its ID
-     */
-    getGame(gameId: string): Game | undefined {
-        return this.games.get(gameId)
     }
 }

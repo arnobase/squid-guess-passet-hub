@@ -33,6 +33,9 @@ export class ClueGivenEvent {
     @BigIntColumn_({nullable: false})
     gameNumber!: bigint
 
+    @StringColumn_({nullable: false})
+    player!: string
+
     @IntColumn_({nullable: false})
     attemptNumber!: number
 

@@ -10,6 +10,9 @@
 /dist
 *.tsbuildinfo
 
+# Generated decoder files
+papi-events.js
+
 # Generated files
 /**Versions.json
 /**Versions.jsonl

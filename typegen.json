@@ -1,6 +1,7 @@
 {
   "outDir": "src/types",
-  "specVersions": "./passet-hub-metadata.jsonl",
+  "specVersions": "./westend-asset-hub-metadata-filtered.jsonl",
+  "typesBundle": "./typesBundle.json",
   "pallets": {
     "Revive": {
       "events": [

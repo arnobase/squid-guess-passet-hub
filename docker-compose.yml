@@ -30,7 +30,7 @@ services:
       - DB_PASS=postgres
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - TARGET_CONTRACTS=${TARGET_CONTRACTS:-0xe75cbd47620dbb2053cf2a98d06840f06baaf141}
-      - NODE_ENV=${NODE_ENV:-production}
+      - NODE_ENV=${NODE_ENV:-development}
     restart: unless-stopped
     command: ["./docker-start.sh"]
 

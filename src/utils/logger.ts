@@ -6,7 +6,7 @@ export class Logger {
 
     static {
         this.logLevel = process.env.LOG_LEVEL || 'info'
-        this.targetContracts = (process.env.TARGET_CONTRACTS || '0xe75cbd47620dbb2053cf2a98d06840f06baaf141').split(',').map(addr => addr.trim())
+        this.targetContracts = (process.env.TARGET_CONTRACTS || '0xe75cbd47620dbb2053cf2a98d06840f06baaf141').split(',').map(addr => addr.trim().toLowerCase())
         this.isProduction = process.env.NODE_ENV === 'production'
     }
 

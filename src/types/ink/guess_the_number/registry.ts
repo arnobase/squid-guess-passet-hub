@@ -7,8 +7,7 @@
  * @generated - Do not edit manually, regenerate with gen-ink-decoder.js
  */
 
-import * as v0_1_0 from './v0.1.0'
-import * as v0_1_2 from './v0.1.2'
+import * as v0_1_3 from './v0.1.3'
 
 /**
  * Version entry in registry
@@ -26,8 +25,7 @@ export type VersionEntry = {
  * Sorted by starting block height
  */
 const registry: VersionEntry[] = [
-  { version: 'v0.1.0', addresses: ['0xe75cbd47620dbb2053cf2a98d06840f06baaf141'], from: 1934744, to: null },
-  { version: 'v0.1.2', addresses: ['0xe75cbd47620dbb2053cf2a98d06840f06baaf141'], from: 1934744, to: null }
+  { version: 'v0.1.3', addresses: ['0x21a41f8e279cb3299fcf36068118c60ef63c332c'], from: 13411865, to: null }
 ]
 
 /**
@@ -38,10 +36,13 @@ const registry: VersionEntry[] = [
  * @returns Decoder module for the resolved version
  */
 export function resolveDecoder(_address: string, _blockHeight: number, _codeHash?: string) {
+  // Normalize address to lowercase for comparison
+  const normalizedAddress = _address.toLowerCase()
+  
   // Filter entries matching address
   const addressMatches = registry.filter(function(e) {
     if (e.addresses && e.addresses.length > 0) {
-      return e.addresses.indexOf(_address) !== -1
+      return e.addresses.some(function(addr) { return addr.toLowerCase() === normalizedAddress })
     }
     return true // No address filter
   })
@@ -72,8 +73,7 @@ export function resolveDecoder(_address: string, _blockHeight: number, _codeHash
   const entry = candidates[0]
   
   switch (entry.version) {
-      case 'v0.1.0': return v0_1_0
-      case 'v0.1.2': return v0_1_2
+      case 'v0.1.3': return v0_1_3
     default: throw new Error('Version not found: ' + entry.version)
   }
 }
