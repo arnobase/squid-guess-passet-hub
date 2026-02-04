@@ -1,64 +1,21 @@
 import {TypeormDatabase, Store} from '@subsquid/typeorm-store'
 import {In} from 'typeorm'
-import * as ss58 from '@subsquid/ss58'
-import assert from 'assert'
 import { encodeAddress } from '@polkadot/util-crypto'
 
 import {processor, ProcessorContext} from './processor'
-import {Contract, Game, GameStartedEvent, GuessSubmittedEvent, ClueGivenEvent, GameOverEvent, GameCancelledEvent, MaxAttemptsUpdatedEvent} from './model'
+import {Contract, Game, Player, GameStartedEvent, GuessSubmittedEvent, ClueGivenEvent, GameOverEvent, GameCancelledEvent, MaxAttemptsUpdatedEvent, Token, MintEvent, BurntEvent, TransferEvent, ApprovalEvent, ApprovalForAllEvent} from './model'
 import {events} from './types'
-// ✅ NEW: Unified decoder module (static or runtime)
-// import { createDecoder, DecoderMode } from './decoders'
-// 
-// STATIC mode (recommended - no JSON metadata needed):
-// const decoder = createDecoder({
-//   mode: DecoderMode.STATIC,
-//   contract: 'guess_the_number'
-// })
-//
-// RUNTIME mode (legacy system - requires JSON metadata):
-// const decoder = createDecoder({
-//   mode: DecoderMode.RUNTIME,
-//   metadataPath: './guess_the_number.json',
-//   contractAddress: '0xe75cbd47620dbb2053cf2a98d06840f06baaf141',
-//   eventTypeMapping: { ... }
-// })
-
-// ✅ NEW: Use @luckyweb3/subsquid-ink-v6-decoder package
-// Option 1: STATIC mode (recommended - no JSON metadata needed)
+// Use @luckyweb3/subsquid-ink-v6-decoder package (STATIC mode)
 import { createDecoder, DecoderMode } from '@luckyweb3/subsquid-ink-v6-decoder'
 // Register static decoders for this project
 import './decoders/static-registry'
-
-// Option 2: RUNTIME mode (legacy system - requires JSON metadata)
-// import { createDecoder, DecoderMode } from '../packages/ink-decoder/src'
 import {GameManager, GameEvent} from './services/game-manager'
 import { Logger } from './utils/logger'
+import { RPC_URL, GUESS_THE_NUMBER_CONTRACTS, ERC721_CONTRACTS } from './config'
 
-Logger.info('🚀 Starting Passet Hub Indexer...')
-Logger.info(`🔗 RPC Endpoint: ${process.env.RPC_PASSET_HUB_WS || 'wss://westend-asset-hub-rpc.polkadot.io'}`)
+Logger.info('🚀 Starting Squid Guess Indexer...')
+Logger.info(`🔗 RPC Endpoint: ${RPC_URL}`)
 Logger.info('📊 Indexing Revive pallet events and game events')
-
-/**
- * Converts an address (object or hexadecimal) to SS58 format
- * For Revive contracts (EVM), we convert to Substrate SS58 format
- */
-/**
- * Serialize data with BigInt support for logging
- * @param data - Data to serialize
- * @returns Serialized string with BigInt converted to string
- */
-function serializeForLogging(data: any): string {
-    return JSON.stringify(data, (key, value) => {
-        if (typeof value === 'bigint') {
-            return value.toString()
-        }
-        if (value instanceof Uint8Array) {
-            return Array.from(value).map(b => b.toString(16).padStart(2, '0')).join('')
-        }
-        return value
-    }, 2)
-}
 
 export function convertToSS58(addressInput: any): string {
     try {
@@ -77,7 +34,7 @@ export function convertToSS58(addressInput: any): string {
             hexAddress = `0x${paddedHex}`
         }
         else {
-            console.warn(`⚠️ Unknown address format:`, addressInput)
+            Logger.warn(`Unknown address format:`, addressInput)
             return String(addressInput)
         }
 
@@ -110,11 +67,30 @@ export function convertToSS58(addressInput: any): string {
 // ✅ FIX: Persistent GameManager across batches
 let persistentGameManager = new GameManager()
 
-// ✅ NEW: Unified Ink! v6 decoder (STATIC mode - no JSON metadata needed)
-const decoder = createDecoder({
-    mode: DecoderMode.STATIC,
-    contract: 'guess_the_number'
-})
+// ✅ NEW: Multi-contract decoder with automatic routing
+import { MultiContractDecoder } from './decoders/multi-contract-decoder'
+const decoder = new MultiContractDecoder()
+
+// ✅ NEW: Contract handlers registry for multi-contract support
+import { ContractHandlerRegistry } from './handlers/contract-handler-registry'
+import { GuessTheNumberHandler } from './handlers/guess-the-number-handler'
+import { ERC721Handler } from './handlers/erc721-handler'
+
+// Créer le registry et enregistrer les handlers
+const handlerRegistry = new ContractHandlerRegistry()
+
+// Enregistrer le handler pour guess_the_number
+handlerRegistry.register(
+    new GuessTheNumberHandler(
+        GUESS_THE_NUMBER_CONTRACTS,
+        persistentGameManager
+    )
+)
+
+// Enregistrer le handler pour ERC721
+handlerRegistry.register(
+    new ERC721Handler(ERC721_CONTRACTS)
+)
 
 // Alternative: RUNTIME mode (if you prefer to use JSON metadata)
 // const decoder = createDecoder({
@@ -141,13 +117,20 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx: Process
     // Compact batch summary
     if (contractEvents.length > 0) {
         const eventSummary = contractEvents.map(evt => {
-            const eventType = evt instanceof GameStartedEvent ? 'NEW_GAME' :
-                            evt instanceof GuessSubmittedEvent ? 'GUESS_MADE' :
-                            evt instanceof ClueGivenEvent ? 'CLUE_GIVEN' :
-                            evt instanceof GameOverEvent ? 'GAME_OVER' :
-                            evt instanceof GameCancelledEvent ? 'GAME_CANCELLED' :
-                            evt instanceof MaxAttemptsUpdatedEvent ? 'MAX_ATTEMPTS' : 'UNKNOWN'
-            return `${eventType}#${evt.gameNumber}@${evt.blockNumber}`
+            // Événements de jeu
+            if (evt instanceof GameStartedEvent) return `NEW_GAME#${evt.gameNumber}@${evt.blockNumber}`
+            if (evt instanceof GuessSubmittedEvent) return `GUESS_MADE#${evt.gameNumber}@${evt.blockNumber}`
+            if (evt instanceof ClueGivenEvent) return `CLUE_GIVEN#${evt.gameNumber}@${evt.blockNumber}`
+            if (evt instanceof GameOverEvent) return `GAME_OVER#${evt.gameNumber}@${evt.blockNumber}`
+            if (evt instanceof GameCancelledEvent) return `GAME_CANCELLED#${evt.gameNumber}@${evt.blockNumber}`
+            if (evt instanceof MaxAttemptsUpdatedEvent) return `MAX_ATTEMPTS#${evt.gameNumber}@${evt.blockNumber}`
+            // Événements ERC721
+            if (evt instanceof MintEvent) return `MINT#${evt.tokenId}@${evt.blockNumber}`
+            if (evt instanceof BurntEvent) return `BURNT#${evt.tokenId}@${evt.blockNumber}`
+            if (evt instanceof TransferEvent) return `TRANSFER#${evt.tokenId}@${evt.blockNumber}`
+            if (evt instanceof ApprovalEvent) return `APPROVAL#${evt.tokenId}@${evt.blockNumber}`
+            if (evt instanceof ApprovalForAllEvent) return `APPROVAL_FOR_ALL@${evt.blockNumber}`
+            return `UNKNOWN@${(evt as any).blockNumber || '?'}`
         }).join(', ')
         Logger.info(`📦 Batch: ${contractEvents.length} event(s) - ${eventSummary}`)
     }
@@ -163,21 +146,91 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx: Process
         }
     }
     
+    // ✅ NEW: Séparer les événements par type de contrat
+    const gameEvents = contractEvents.filter(e => 
+        e instanceof GameStartedEvent || 
+        e instanceof GuessSubmittedEvent || 
+        e instanceof ClueGivenEvent ||
+        e instanceof GameOverEvent ||
+        e instanceof GameCancelledEvent ||
+        e instanceof MaxAttemptsUpdatedEvent
+    )
+    const erc721Events = contractEvents.filter(e =>
+        e instanceof MintEvent ||
+        e instanceof BurntEvent ||
+        e instanceof TransferEvent ||
+        e instanceof ApprovalEvent ||
+        e instanceof ApprovalForAllEvent
+    )
+    
     // ✅ FIX: Load existing games from DB into GameManager before processing events
-    // This ensures that games created in previous batches are available
-    if (contractEvents.length > 0) {
-        const gameKeys = contractEvents.map(event => {
-            const contractAddressSS58 = convertToSS58(event.contractAddress)
-            return `${contractAddressSS58}-${event.gameNumber.toString()}`
-        })
-        const existingGames = await ctx.store.findBy(Game, {id: In(gameKeys)})
-        existingGames.forEach(game => {
-            gameManager.loadGame(game)
-        })
+    if (gameEvents.length > 0) {
+        const gameKeys = gameEvents.map(event => {
+            const normalizedContract = event.contractAddress.startsWith('0x') 
+                ? event.contractAddress 
+                : `0x${event.contractAddress}`
+            const gameEvent = event as any
+            if (gameEvent.gameNumber !== undefined) {
+                return `${normalizedContract}-${gameEvent.gameNumber.toString()}`
+            }
+            return null
+        }).filter((key): key is string => key !== null)
+        
+        if (gameKeys.length > 0) {
+            const existingGames = await ctx.store.findBy(Game, {id: In(gameKeys)})
+            existingGames.forEach(game => {
+                gameManager.loadGame(game)
+            })
+        }
     }
     
-    // ✅ FIX: Use GameManager for consistent game management
-    let games: Game[] = processGamesWithManager(contractEvents, contracts, gameManager)
+    // ✅ NEW: Créer/récupérer les Players pour tous les événements
+    const allPlayerAddresses: string[] = []
+    let firstTimestamp = new Date()
+    let firstBlockNumber = 0
+    
+    // Collecter toutes les adresses de joueurs des événements
+    for (const event of gameEvents) {
+        if (event instanceof GameStartedEvent || event instanceof GuessSubmittedEvent || 
+            event instanceof ClueGivenEvent || event instanceof GameOverEvent ||
+            event instanceof GameCancelledEvent || event instanceof MaxAttemptsUpdatedEvent) {
+            allPlayerAddresses.push(event.player)
+            if (!firstBlockNumber || event.blockNumber < firstBlockNumber) {
+                firstTimestamp = event.timestamp
+                firstBlockNumber = event.blockNumber
+            }
+        }
+    }
+    
+    // Collecter les adresses des événements ERC721 (owners)
+    for (const event of erc721Events) {
+        if (event instanceof TransferEvent) {
+            if (event.from) allPlayerAddresses.push(event.from)
+            if (event.to) allPlayerAddresses.push(event.to)
+        }
+        if (!firstBlockNumber || event.blockNumber < firstBlockNumber) {
+            firstTimestamp = event.timestamp
+            firstBlockNumber = event.blockNumber
+        }
+    }
+    
+    // Créer/récupérer les Players
+    const players = await getOrCreatePlayers(ctx, allPlayerAddresses, firstTimestamp, firstBlockNumber)
+    
+    // ✅ FIX: Traiter les événements de jeu avec GameManager (comportement existant)
+    let games: Game[] = []
+    if (gameEvents.length > 0) {
+        games = processGamesWithManager(gameEvents, contracts, players, gameManager)
+    }
+    
+    // ✅ NEW: Traiter les événements ERC721 avec le handler
+    let tokens: Token[] = []
+    if (erc721Events.length > 0) {
+        const handler = handlerRegistry.getHandler(erc721Events[0].contractAddress) as any
+        if (handler && handler.contractName === 'erc721') {
+            tokens = handler.processEvents(erc721Events, contracts, players) as Token[]
+        }
+    }
 
         // ✅ FIX: Retrieve existing games from database and merge them
         const existingGames = await ctx.store.findBy(Game, {id: In(games.map(g => g.id))})
@@ -198,6 +251,11 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx: Process
         games.forEach(game => {
             const existingGame = mergedGames.get(game.id)
             if (existingGame) {
+                // ✅ FIX: Update player if new game has player and existing is unknown
+                if (game.playerAddress && game.playerAddress !== 'unknown' && (existingGame.playerAddress === 'unknown' || !existingGame.playerAddress)) {
+                    existingGame.player = game.player
+                    existingGame.playerAddress = game.playerAddress
+                }
                 // ✅ FIX: Update ALL fields of existing game
                 existingGame.attempt = game.attempt
                 existingGame.lastGuess = game.lastGuess
@@ -237,6 +295,13 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx: Process
         // Batch database operations
         await ctx.store.upsert([...contracts.values()])
         
+        // ✅ IMPORTANT: Sauvegarder les Players (sans stats complètes) AVANT les Games et Tokens (contrainte FK)
+        // On les sauvegarde d'abord avec des valeurs par défaut, puis on mettra à jour les stats après
+        if (players.size > 0) {
+            // Sauvegarder les players avec les valeurs de base (sans stats calculées)
+            await ctx.store.upsert(Array.from(players.values()))
+        }
+        
         // Save typed events by type
         const gameStartedEvents = contractEvents.filter(e => e instanceof GameStartedEvent)
         const guessSubmittedEvents = contractEvents.filter(e => e instanceof GuessSubmittedEvent)
@@ -245,6 +310,14 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx: Process
         const gameCancelledEvents = contractEvents.filter(e => e instanceof GameCancelledEvent)
         const maxAttemptsUpdatedEvents = contractEvents.filter(e => e instanceof MaxAttemptsUpdatedEvent)
         
+        // Événements ERC721
+        const mintEvents = contractEvents.filter(e => e instanceof MintEvent)
+        const burntEvents = contractEvents.filter(e => e instanceof BurntEvent)
+        const transferEvents = contractEvents.filter(e => e instanceof TransferEvent)
+        const approvalEvents = contractEvents.filter(e => e instanceof ApprovalEvent)
+        const approvalForAllEvents = contractEvents.filter(e => e instanceof ApprovalForAllEvent)
+        
+        // Sauvegarder les événements de jeu
         if (gameStartedEvents.length > 0) await ctx.store.insert(gameStartedEvents)
         if (guessSubmittedEvents.length > 0) await ctx.store.insert(guessSubmittedEvents)
         if (clueGivenEvents.length > 0) await ctx.store.insert(clueGivenEvents)
@@ -252,11 +325,114 @@ processor.run(new TypeormDatabase({supportHotBlocks: true}), async (ctx: Process
         if (gameCancelledEvents.length > 0) await ctx.store.insert(gameCancelledEvents)
         if (maxAttemptsUpdatedEvents.length > 0) await ctx.store.insert(maxAttemptsUpdatedEvents)
         
-        await ctx.store.upsert(deduplicatedGames)
+        // Sauvegarder les événements ERC721
+        if (mintEvents.length > 0) await ctx.store.insert(mintEvents)
+        if (burntEvents.length > 0) await ctx.store.insert(burntEvents)
+        if (transferEvents.length > 0) await ctx.store.insert(transferEvents)
+        if (approvalEvents.length > 0) await ctx.store.insert(approvalEvents)
+        if (approvalForAllEvents.length > 0) await ctx.store.insert(approvalForAllEvents)
+        
+        // Sauvegarder les entités (Games et Tokens)
+        if (deduplicatedGames.length > 0) await ctx.store.upsert(deduplicatedGames)
+        if (tokens.length > 0) {
+            // Charger les tokens existants pour fusion
+            const tokenKeys = tokens.map(t => t.id)
+            const existingTokens = await ctx.store.findBy(Token, {id: In(tokenKeys)})
+            const existingTokensMap = new Map<string, Token>()
+            existingTokens.forEach(token => {
+                existingTokensMap.set(token.id, token)
+            })
+            
+            // Fusionner les tokens
+            const mergedTokens = new Map<string, Token>()
+            existingTokensMap.forEach((token, id) => {
+                mergedTokens.set(id, token)
+            })
+            
+            tokens.forEach(token => {
+                const existingToken = mergedTokens.get(token.id)
+                if (existingToken) {
+                    // Mettre à jour le token existant
+                    // Toujours mettre à jour le propriétaire si on a une valeur valide
+                    if (token.ownerAddress && token.ownerAddress !== 'unknown') {
+                        existingToken.owner = token.owner
+                        existingToken.ownerAddress = token.ownerAddress
+                    } else if (token.ownerAddress === 'unknown' && existingToken.ownerAddress === 'unknown') {
+                        // Si les deux sont 'unknown', on garde l'existant (pas de changement)
+                    }
+                    // Mettre à jour maxAttempts si défini (venant d'un MintEvent)
+                    if (token.maxAttempts !== null && token.maxAttempts !== undefined) {
+                        existingToken.maxAttempts = token.maxAttempts
+                    }
+                    // Mettre à jour les dates de mint si meilleures (plus anciennes)
+                    if (token.mintedAt && (!existingToken.mintedAt || token.mintedAt < existingToken.mintedAt)) {
+                        existingToken.mintedAt = token.mintedAt
+                        existingToken.mintedAtBlock = token.mintedAtBlock
+                    }
+                    // Mettre à jour le statut burnt
+                    if (token.burnt !== undefined) existingToken.burnt = token.burnt
+                    if (token.burntAt) existingToken.burntAt = token.burntAt
+                    if (token.burntAtBlock) existingToken.burntAtBlock = token.burntAtBlock
+                } else {
+                    mergedTokens.set(token.id, token)
+                }
+            })
+            
+            await ctx.store.upsert(Array.from(mergedTokens.values()))
+        }
+        
+        // ✅ NEW: Mettre à jour les stats des Players APRÈS avoir sauvegardé les tokens
+        // Maintenant tous les tokens (existants + nouveaux) sont en DB
+        if (players.size > 0) {
+            const playerIds = Array.from(players.keys())
+            
+            // Recharger les players depuis la DB (ils ont été sauvegardés plus tôt)
+            const playersFromDb = await ctx.store.findBy(Player, {id: In(playerIds)})
+            const playersMap = new Map<string, Player>()
+            playersFromDb.forEach(p => playersMap.set(p.id, p))
+            
+            // Pour chaque player, recalculer les stats à partir de TOUS les tokens et games en DB
+            for (const playerId of playerIds) {
+                const player = playersMap.get(playerId) || players.get(playerId)
+                if (!player) continue
+                
+                const playerIdLower = playerId.toLowerCase()
+                
+                // Charger tous les games du player depuis la DB
+                const allGamesFromDb = await ctx.store.find(Game, {})
+                const playerGames = allGamesFromDb.filter(g => 
+                    g.playerAddress.toLowerCase() === playerIdLower
+                )
+                player.totalGames = playerGames.length
+                player.totalWins = playerGames.filter(g => g.won === true).length
+                
+                // Charger tous les tokens du player depuis la DB (maintenant ils sont tous sauvegardés)
+                const allTokensFromDb = await ctx.store.find(Token, {})
+                const playerTokens = allTokensFromDb.filter(t => 
+                    t.ownerAddress.toLowerCase() === playerIdLower && !t.burnt
+                )
+                player.totalTokens = playerTokens.length
+                
+                // Calculer maxMaxAttempts à partir de TOUS les tokens
+                let currentMax: number | null = null
+                for (const token of playerTokens) {
+                    if (token.maxAttempts !== null && token.maxAttempts !== undefined) {
+                        const maxAttempts = Number(token.maxAttempts)
+                        if (currentMax === null || maxAttempts > currentMax) {
+                            currentMax = maxAttempts
+                        }
+                    }
+                }
+                player.maxMaxAttempts = currentMax
+            }
+            
+            // Sauvegarder les players avec les stats mises à jour
+            await ctx.store.upsert(Array.from(playersMap.values()))
+        }
     
         // Log only if there are events or in debug mode
         if (contractEvents.length > 0 || Logger.getLogLevel() === 'debug') {
-            Logger.info(`✅ Processed: ${contractEvents.length} event(s), ${deduplicatedGames.length} game(s)`)
+            Logger.info(`✅ Processed: ${contractEvents.length} event(s), ${deduplicatedGames.length} game(s), ${players.size} player(s)`)
         }
 })
 
@@ -270,8 +446,14 @@ type TypedContractEvent =
     | GameOverEvent
     | GameCancelledEvent
     | MaxAttemptsUpdatedEvent
+    | MintEvent
+    | BurntEvent
+    | TransferEvent
+    | ApprovalEvent
+    | ApprovalForAllEvent
 
 // Function to create typed events based on decoded data
+// ✅ NEW: Utilise le système de handlers pour router automatiquement
 function createTypedEvent(
     id: string,
     blockNumber: number,
@@ -280,92 +462,29 @@ function createTypedEvent(
     contractAddress: string,
     decodedEvent: any
 ): TypedContractEvent | null {
-    const baseEvent = {
+    // Trouver le handler pour ce contrat
+    const handler = handlerRegistry.getHandler(contractAddress)
+    
+    if (!handler) {
+        Logger.debug(`No handler found for contract: ${contractAddress}`)
+        return null
+    }
+    
+    // Vérifier si le handler gère ce type d'événement
+    if (!handler.handlesEventType(decodedEvent.eventType)) {
+        Logger.debug(`Handler ${handler.contractName} does not handle event type: ${decodedEvent.eventType}`)
+        return null
+    }
+    
+    // Déléguer au handler
+    return handler.createTypedEvent(
         id,
         blockNumber,
         timestamp,
-        extrinsicHash: extrinsicHash || null,
-        contractAddress
-    }
-
-    switch (decodedEvent.eventType) {
-        case 'new_game':
-            const playerAddress = decodedEvent.data.player || ''
-            const ss58Address = convertToSS58(playerAddress)
-            Logger.debug(`Address conversion: ${playerAddress} -> ${ss58Address}`)
-            return new GameStartedEvent({
-                ...baseEvent,
-                gameNumber: BigInt(decodedEvent.data.game_number || 0),
-                player: ss58Address,
-                minNumber: decodedEvent.data.min_number || 0,
-                maxNumber: decodedEvent.data.max_number || 0
-            })
-        
-        case 'guess_made':
-            const guessMadePlayer = decodedEvent.data.player || ''
-            const guessMadeSS58 = convertToSS58(guessMadePlayer)
-            return new GuessSubmittedEvent({
-                ...baseEvent,
-                gameNumber: BigInt(decodedEvent.data.game_number || 0),
-                player: guessMadeSS58,
-                attemptNumber: decodedEvent.data.attempt || 0,
-                guess: decodedEvent.data.guess || 0
-            })
-        
-        case 'clue_given':
-            const clueGivenPlayer = decodedEvent.data.player || ''
-            const clueGivenSS58 = convertToSS58(clueGivenPlayer)
-            return new ClueGivenEvent({
-                ...baseEvent,
-                gameNumber: BigInt(decodedEvent.data.game_number || 0),
-                player: clueGivenSS58,
-                attemptNumber: decodedEvent.data.attempt || 0,
-                guess: decodedEvent.data.guess || 0,
-                result: decodedEvent.data.clue || ''
-            })
-        
-        case 'game_over':
-            const gameOverPlayer = decodedEvent.data.player || ''
-            const gameOverSS58 = convertToSS58(gameOverPlayer)
-            return new GameOverEvent({
-                ...baseEvent,
-                gameNumber: BigInt(decodedEvent.data.game_number || 0),
-                player: gameOverSS58,
-                win: decodedEvent.data.win || false,
-                target: decodedEvent.data.target || 0
-            })
-        
-        case 'game_cancelled':
-            const cancelledPlayer = decodedEvent.data.player || ''
-            const cancelledSS58 = convertToSS58(cancelledPlayer)
-            return new GameCancelledEvent({
-                ...baseEvent,
-                gameNumber: BigInt(decodedEvent.data.game_number || 0),
-                player: cancelledSS58
-            })
-        
-        case 'max_attempts_updated':
-            const maxAttemptsPlayer = decodedEvent.data.player || ''
-            const maxAttemptsSS58 = convertToSS58(maxAttemptsPlayer)
-            return new MaxAttemptsUpdatedEvent({
-                ...baseEvent,
-                gameNumber: BigInt(decodedEvent.data.game_number || 0),
-                player: maxAttemptsSS58,
-                maxAttempts: decodedEvent.data.max_attempts || 0
-            })
-        
-        case 'message_queued':
-        case 'message_processed':
-        case 'role_granted':
-        case 'role_revoked':
-        case 'meta_transaction_decoded':
-            // These events are not game-related, skip them silently
-            return null
-        
-        default:
-            Logger.warn(`Unknown event type: ${decodedEvent.eventType}`)
-            return null
-    }
+        extrinsicHash,
+        contractAddress,
+        decodedEvent
+    ) as TypedContractEvent | null
 }
 
 // Supprimé : getTransferEvents - focus sur les jeux uniquement
@@ -400,22 +519,26 @@ async function getContractEvents(ctx: ProcessorContext<Store>): Promise<TypedCon
                     hasTargetEvents = true
                     targetContractEvents++
                     
+                    // Afficher les informations brutes de l'événement
+                    const signature = topics.length > 0 ? topics[0] : 'N/A'
+                    Logger.info(`📋 [Event] Block ${block.header.height} | Signature: ${signature.slice(0, 18)}...`)
+                    Logger.info(`   Data (hex): ${eventData.slice(0, 80)}${eventData.length > 80 ? '...' : ''}`)
+                    Logger.info(`   Topics (${topics.length}): ${topics.map((t: string, i: number) => `[${i}]: ${t.slice(0, 20)}...`).join(', ')}`)
+                    
                     // Decode event with unified Ink! v6 decoder
                     const decodedEvent = await decoder.decodeEvent(eventData, topics, contractAddress, block.header.height)
                     
-                    // Debug: log what we get from decoder
                     if (!decodedEvent) {
-                        Logger.debug(`No decoded event for contract ${contractAddress} at block ${block.header.height}`)
+                        Logger.warn(`   ⚠️  Could not decode event`)
                         continue
                     }
                     
-                    // Debug: check if eventType exists
                     if (!decodedEvent.eventType) {
-                        Logger.warn(`Decoded event but no eventType. Decoded: ${JSON.stringify(decodedEvent)}`)
-                        Logger.debug(`  EventData: ${eventData}`)
-                        Logger.debug(`  Topics: ${JSON.stringify(topics)}`)
+                        Logger.warn(`   ⚠️  Decoded event but no eventType`)
                         continue
                     }
+                    
+                    Logger.info(`   ✅ Decoded: ${decodedEvent.eventType}`)
                     
                     if (decodedEvent) {
                         // Skip non-game events silently
@@ -438,8 +561,10 @@ async function getContractEvents(ctx: ProcessorContext<Store>): Promise<TypedCon
                         processedEventData.add(eventDataKey)
                         
                         // Create typed event according to its type
-                        const contractAddressSS58 = convertToSS58(contractAddress)
-                        const eventId = `${block.header.height}-${eventIndex}-${contractAddressSS58}`
+                        const normalizedContract = contractAddress.startsWith('0x')
+                            ? contractAddress
+                            : `0x${contractAddress}`
+                        const eventId = `${block.header.height}-${eventIndex}-${normalizedContract}`
                         const blockTimestamp = new Date(Number((block.header as any).timestamp ?? (block as any).timestamp))
                         const typedEvent = createTypedEvent(
                             eventId,
@@ -486,6 +611,76 @@ async function getContractEvents(ctx: ProcessorContext<Store>): Promise<TypedCon
 
 // Removed: createAccounts and createTransfers - focus on games only
 
+/**
+ * Creates or updates Player entities from events
+ */
+async function getOrCreatePlayers(ctx: ProcessorContext<Store>, addresses: string[], timestamp: Date, blockNumber: number): Promise<Map<string, Player>> {
+    const players = new Map<string, Player>()
+    
+    // Normalize addresses
+    const normalizedAddresses = addresses.map(addr => addr.toLowerCase())
+    const uniqueAddresses = [...new Set(normalizedAddresses)].filter(a => a && a !== 'unknown')
+    
+    if (uniqueAddresses.length === 0) return players
+    
+    // Fetch existing players
+    const existingPlayers = await ctx.store.findBy(Player, {id: In(uniqueAddresses)})
+    for (const player of existingPlayers) {
+        players.set(player.id, player)
+    }
+    
+    // Create new players for addresses that don't exist
+    for (const address of uniqueAddresses) {
+        if (!players.has(address)) {
+            const player = new Player({
+                id: address,
+                totalGames: 0,
+                totalWins: 0,
+                totalTokens: 0,
+                maxMaxAttempts: null,
+                firstSeenAt: timestamp,
+                firstSeenAtBlock: blockNumber,
+                lastActiveAt: timestamp,
+                lastActiveAtBlock: blockNumber
+            })
+            players.set(address, player)
+        } else {
+            // Update last active time
+            const player = players.get(address)!
+            player.lastActiveAt = timestamp
+            player.lastActiveAtBlock = blockNumber
+        }
+    }
+    
+    return players
+}
+
+/**
+ * Updates player stats based on games and tokens
+ */
+function updatePlayerStats(player: Player, games: Game[], tokens: Token[]): void {
+    // Count games for this player
+    const playerGames = games.filter(g => g.playerAddress.toLowerCase() === player.id)
+    player.totalGames = playerGames.length
+    player.totalWins = playerGames.filter(g => g.won === true).length
+    
+    // Count tokens and find maxMaxAttempts
+    const playerTokens = tokens.filter(t => t.ownerAddress.toLowerCase() === player.id && !t.burnt)
+    player.totalTokens = playerTokens.length
+    
+    // Calculate maxMaxAttempts from tokens
+    let maxMax: number | null = null
+    for (const token of playerTokens) {
+        if (token.maxAttempts !== null && token.maxAttempts !== undefined) {
+            const maxAttempts = Number(token.maxAttempts)
+            if (maxMax === null || maxAttempts > maxMax) {
+                maxMax = maxAttempts
+            }
+        }
+    }
+    player.maxMaxAttempts = maxMax
+}
+
 async function createContracts(ctx: ProcessorContext<Store>, contractEvents: TypedContractEvent[]): Promise<Map<string, Contract>> {
     let contracts = new Map<string, Contract>()
     
@@ -516,10 +711,8 @@ async function createContracts(ctx: ProcessorContext<Store>, contractEvents: Typ
     return contracts
 }
 
-// This function is no longer needed as we save typed events directly
-
-// ✅ NEW FUNCTION: Process games with GameManager
-function processGamesWithManager(contractEvents: TypedContractEvent[], contracts: Map<string, Contract>, gameManager: GameManager): Game[] {
+// Process games with GameManager
+function processGamesWithManager(contractEvents: TypedContractEvent[], contracts: Map<string, Contract>, players: Map<string, Player>, gameManager: GameManager): Game[] {
     let games: Game[] = []
     
     for (let event of contractEvents) {
@@ -528,8 +721,10 @@ function processGamesWithManager(contractEvents: TypedContractEvent[], contracts
         if (contract) {
                 // Convert typed event to GameEvent format
                 let gameEvent: GameEvent | null = null
+                let playerAddress: string = 'unknown'
                 
                 if (event instanceof GameStartedEvent) {
+                    playerAddress = event.player
                     gameEvent = {
                 id: event.id,
                 blockNumber: event.blockNumber,
@@ -542,6 +737,7 @@ function processGamesWithManager(contractEvents: TypedContractEvent[], contracts
                         maxNumber: event.maxNumber
                     }
                 } else if (event instanceof GuessSubmittedEvent) {
+                    playerAddress = event.player
                     gameEvent = {
                         id: event.id,
                         blockNumber: event.blockNumber,
@@ -549,10 +745,12 @@ function processGamesWithManager(contractEvents: TypedContractEvent[], contracts
                         contractAddress: event.contractAddress,
                         eventType: 'guess_made',
                         gameNumber: event.gameNumber.toString(),
+                        player: event.player,
                         attemptNumber: event.attemptNumber,
                         guess: event.guess
                     }
                 } else if (event instanceof ClueGivenEvent) {
+                    playerAddress = event.player
                     gameEvent = {
                         id: event.id,
                         blockNumber: event.blockNumber,
@@ -560,11 +758,13 @@ function processGamesWithManager(contractEvents: TypedContractEvent[], contracts
                 contractAddress: event.contractAddress,
                         eventType: 'clue_given',
                         gameNumber: event.gameNumber.toString(),
+                        player: event.player,
                         attemptNumber: event.attemptNumber,
                         guess: event.guess,
                         result: event.result
                     }
                 } else if (event instanceof GameOverEvent) {
+                    playerAddress = event.player
                     gameEvent = {
                         id: event.id,
                         blockNumber: event.blockNumber,
@@ -577,6 +777,7 @@ function processGamesWithManager(contractEvents: TypedContractEvent[], contracts
                         target: event.target
                     }
                 } else if (event instanceof GameCancelledEvent) {
+                    playerAddress = event.player
                     gameEvent = {
                         id: event.id,
                         blockNumber: event.blockNumber,
@@ -587,6 +788,7 @@ function processGamesWithManager(contractEvents: TypedContractEvent[], contracts
                         player: event.player
                     }
                 } else if (event instanceof MaxAttemptsUpdatedEvent) {
+                    playerAddress = event.player
                     gameEvent = {
                         id: event.id,
                         blockNumber: event.blockNumber,
@@ -600,10 +802,16 @@ function processGamesWithManager(contractEvents: TypedContractEvent[], contracts
                 }
                 
                 if (gameEvent) {
-                    // Process event with GameManager
-                    const game = gameManager.processGameEvent(gameEvent, contract)
-                    if (game) {
-                        games.push(game)
+                    // Get or create player entity
+                    const playerEntity = players.get(playerAddress.toLowerCase())
+                    if (playerEntity) {
+                        // Process event with GameManager
+                        const game = gameManager.processGameEvent(gameEvent, contract, playerEntity)
+                        if (game) {
+                            games.push(game)
+                        }
+                    } else {
+                        Logger.warn(`Player not found for address: ${playerAddress}`)
                     }
                 }
             }
@@ -615,4 +823,3 @@ function processGamesWithManager(contractEvents: TypedContractEvent[], contracts
     return games
 }
 
-// Old function removed - replaced by processGamesWithManager

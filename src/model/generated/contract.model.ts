@@ -5,6 +5,11 @@ import {ClueGivenEvent} from "./clueGivenEvent.model"
 import {GameOverEvent} from "./gameOverEvent.model"
 import {GameCancelledEvent} from "./gameCancelledEvent.model"
 import {MaxAttemptsUpdatedEvent} from "./maxAttemptsUpdatedEvent.model"
+import {MintEvent} from "./mintEvent.model"
+import {BurntEvent} from "./burntEvent.model"
+import {TransferEvent} from "./transferEvent.model"
+import {ApprovalEvent} from "./approvalEvent.model"
+import {ApprovalForAllEvent} from "./approvalForAllEvent.model"
 
 @Entity_()
 export class Contract {
@@ -44,4 +49,19 @@ export class Contract {
 
     @OneToMany_(() => MaxAttemptsUpdatedEvent, e => e.contract)
     maxAttemptsUpdatedEvents!: MaxAttemptsUpdatedEvent[]
+
+    @OneToMany_(() => MintEvent, e => e.contract)
+    mintEvents!: MintEvent[]
+
+    @OneToMany_(() => BurntEvent, e => e.contract)
+    burntEvents!: BurntEvent[]
+
+    @OneToMany_(() => TransferEvent, e => e.contract)
+    transferEvents!: TransferEvent[]
+
+    @OneToMany_(() => ApprovalEvent, e => e.contract)
+    approvalEvents!: ApprovalEvent[]
+
+    @OneToMany_(() => ApprovalForAllEvent, e => e.contract)
+    approvalForAllEvents!: ApprovalForAllEvent[]
 }

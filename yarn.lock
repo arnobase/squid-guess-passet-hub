@@ -640,7 +640,7 @@ __metadata:
 
 "@luckyweb3/subsquid-ink-v6-decoder@file:./packages/subsquid-ink-v6-decoder::locator=squid%40workspace%3A.":
   version: 1.0.0
-  resolution: "@luckyweb3/subsquid-ink-v6-decoder@file:./packages/subsquid-ink-v6-decoder#./packages/subsquid-ink-v6-decoder::hash=1b7c4d&locator=squid%40workspace%3A."
+  resolution: "@luckyweb3/subsquid-ink-v6-decoder@file:./packages/subsquid-ink-v6-decoder#./packages/subsquid-ink-v6-decoder::hash=7553f7&locator=squid%40workspace%3A."
   dependencies:
     "@subsquid/ink-abi": "npm:^3.1.0"
     "@subsquid/util-internal-hex": "npm:^1.2.2"
@@ -648,8 +648,8 @@ __metadata:
     "@polkadot/util": ^13.0.0
     "@polkadot/util-crypto": ^13.0.0
   bin:
-    subsquid-ink-v6-decoder: ./lib/cli.js
-  checksum: 10c0/0211a00359521983ef5c0d5ec89327af8277eb8248119896da7ea00c2a9d5ff6a48453ab04739666d2cad162d91abcef2566be8acb7d5ec0414581e3b80bb1c2
+    subsquid-ink-v6-decoder: ./lib/cli.mjs
+  checksum: 10c0/4a4937a7d677836deadcaf05258dcbdfbbfd8094d0e6f976a860e37acb54416262f5a4b03129dfbf0ae6ba41b8bd992edd66abe862bfdf08de80293cb71e6e24
   languageName: node
   linkType: hard
 

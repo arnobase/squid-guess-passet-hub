@@ -4,7 +4,6 @@
   "description": "Unified decoder for Ink! v6 contract events in Subsquid indexers. Supports both static (generated) and runtime (metadata-based) decoding modes.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
-  "type": "module",
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
@@ -16,7 +15,7 @@
     }
   },
   "bin": {
-    "subsquid-ink-v6-decoder": "./lib/cli.js"
+    "subsquid-ink-v6-decoder": "./lib/cli.mjs"
   },
   "files": [
     "lib",
@@ -24,7 +23,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc && cp src/cli.js lib/cli.js",
+    "build": "tsc && cp src/cli.js lib/cli.mjs",
     "prepublishOnly": "yarn build"
   },
   "keywords": [

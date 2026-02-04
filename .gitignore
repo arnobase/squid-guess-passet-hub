@@ -96,3 +96,4 @@ Desktop.ini
 /.squid
 
 /AI_DOCS/*
+/db/migrations/*

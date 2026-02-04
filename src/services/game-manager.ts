@@ -3,8 +3,9 @@
 
 import { Game } from '../model/generated/game.model'
 import { Contract } from '../model/generated/contract.model'
-import { convertToSS58 } from '../main'
+import { Player } from '../model/generated/player.model'
 import { GuessHistoryItem } from '../model/generated/_guessHistoryItem'
+import { Logger } from '../utils/logger'
 
 export interface GameEvent {
     id: string
@@ -50,10 +51,16 @@ export class GameManager {
 
     /**
      * Processes a game event and updates the game state
+     * @param event - The game event to process
+     * @param contract - The contract entity
+     * @param playerEntity - The player entity (must be created/fetched by caller)
      */
-    processGameEvent(event: GameEvent, contract: Contract): Game | null {
-        const contractAddressSS58 = convertToSS58(event.contractAddress)
-        const gameKey = `${contractAddressSS58}-${event.gameNumber}`
+    processGameEvent(event: GameEvent, contract: Contract, playerEntity: Player): Game | null {
+        // ✅ Keep H160 address as-is
+        const normalizedContract = event.contractAddress.startsWith('0x')
+            ? event.contractAddress
+            : `0x${event.contractAddress}`
+        const gameKey = `${normalizedContract}-${event.gameNumber}`
         
         // Get or create the game
         let game = this.games.get(gameKey)
@@ -63,7 +70,8 @@ export class GameManager {
             game = new Game({
                 id: gameKey,
                 gameNumber: BigInt(event.gameNumber),
-                player: event.player || 'unknown',
+                player: playerEntity,
+                playerAddress: event.player || 'unknown',
                 minNumber: event.minNumber || 0,
                 maxNumber: event.maxNumber || 100,
                 attempt: 0,
@@ -78,7 +86,8 @@ export class GameManager {
             game = new Game({
                 id: gameKey,
                 gameNumber: BigInt(event.gameNumber),
-                player: event.player || 'unknown',
+                player: playerEntity,
+                playerAddress: event.player || 'unknown',
                 minNumber: 0,
                 maxNumber: 100,
                 attempt: 0,
@@ -94,6 +103,12 @@ export class GameManager {
         }
         
         if (game) {
+            // ✅ FIX: Update player if event contains player and current player is unknown
+            if (event.player && (game.playerAddress === 'unknown' || !game.playerAddress)) {
+                game.player = playerEntity
+                game.playerAddress = event.player
+            }
+            
             // Update game according to event type
             switch (event.eventType) {
                 case 'new_game':
@@ -133,28 +148,28 @@ export class GameManager {
                         const lastGuess = game.guessHistory[game.guessHistory.length - 1]
                         if (lastGuess && lastGuess.attemptNumber === event.attemptNumber) {
                             lastGuess.result = event.result || 'Unknown'
-                            console.log(`💡 Result updated: ${event.result} for attempt ${event.attemptNumber}`)
+                            Logger.debug(`Result updated: ${event.result} for attempt ${event.attemptNumber}`)
                         }
                     }
                     
-                    console.log(`💡 Clue recorded: ${event.result}`)
+                    Logger.debug(`Clue recorded: ${event.result}`)
                     break
                 
                 case 'game_over':
                     game.isOver = true
                     game.won = event.win || false
                     game.target = event.target || null
-                    console.log(`🏁 Game over: ${event.win ? 'Won' : 'Lost'} - Target: ${event.target}`)
+                    Logger.debug(`Game over: ${event.win ? 'Won' : 'Lost'} - Target: ${event.target}`)
                     break
                 
                 case 'game_cancelled':
                     game.cancelled = true
-                    console.log(`❌ Game cancelled: ${event.gameNumber}`)
+                    Logger.debug(`Game cancelled: ${event.gameNumber}`)
                     break
                 
                 case 'max_attempts_updated':
                     game.maxAttempts = event.maxAttempts || null
-                    console.log(`📊 Max attempts updated: ${event.maxAttempts}`)
+                    Logger.debug(`Max attempts updated: ${event.maxAttempts}`)
                     break
             }
             

@@ -1,5 +1,6 @@
 // import {assertNotNull} from '@subsquid/util-internal'
 import { Logger } from './utils/logger'
+import { RPC_URL } from './config'
 
 Logger.debug('Loading processor.ts...')
 
@@ -20,8 +21,6 @@ import {
     Extrinsic as _Extrinsic
 } from '@subsquid/substrate-processor'
 
-console.log('📝 [DEBUG] Substrate processor imports loaded')
-
 import {events} from './types'
 
 Logger.debug('Types imported, creating processor...')
@@ -34,6 +33,8 @@ const finalityConfirmation = parseInt(process.env.FINALITY_CONFIRMATION || '1')
 const rpcCapacity = parseInt(process.env.RPC_CAPACITY || '20') // Connexions concurrentes
 const rpcMaxBatchCallSize = parseInt(process.env.RPC_MAX_BATCH_CALL_SIZE || '200') // Appels RPC batchés
 const rpcRequestTimeout = parseInt(process.env.RPC_REQUEST_TIMEOUT || '60000') // Timeout en ms
+// Configuration de performance pour les batches
+const batchSize = parseInt(process.env.BATCH_SIZE || '0') || undefined // Taille des batches (0 = auto)
 
 Logger.info(`Configuration du processor:`)
 Logger.info(`   - Start Block: ${startBlock}`)
@@ -42,15 +43,20 @@ Logger.info(`   - Finality Confirmation: ${finalityConfirmation}`)
 Logger.info(`   - RPC Capacity: ${rpcCapacity} connexions`)
 Logger.info(`   - RPC Max Batch Call Size: ${rpcMaxBatchCallSize}`)
 Logger.info(`   - RPC Request Timeout: ${rpcRequestTimeout}ms`)
+Logger.info(`   - Batch Size: ${batchSize || 'auto (géré par Subsquid)'}`)
 Logger.info(`   - Target Contracts: ${Logger.getTargetContracts().join(', ')}`)
 Logger.info(`   - Log Level: ${Logger.getLogLevel()}`)
 
-export const processor = new SubstrateBatchProcessor()
-    // Utilise SQD Network comme source principale de données (archive historique)
-    .setGateway('https://v2.archive.subsquid.io/network/asset-hub-westend')
-    // Configuration RPC pour les mises à jour en temps réel
+// Optional: Subsquid archive gateway for historical blocks. If unset, only RPC is used (no archive).
+const SUBSQUID_GATEWAY = process.env.SUBSQUID_GATEWAY?.trim() || undefined
+
+const proc = new SubstrateBatchProcessor()
+if (SUBSQUID_GATEWAY) {
+  proc.setGateway(SUBSQUID_GATEWAY)
+}
+export const processor = proc
     .setRpcEndpoint({
-        url: process.env.RPC_PASSET_HUB_WS || 'wss://westend-asset-hub-rpc.polkadot.io',
+        url: RPC_URL,
         capacity: rpcCapacity,                    // Nombre de connexions concurrentes
         maxBatchCallSize: rpcMaxBatchCallSize,    // Nombre d'appels RPC batchés
         requestTimeout: rpcRequestTimeout        // Timeout des requêtes RPC
@@ -61,8 +67,10 @@ export const processor = new SubstrateBatchProcessor()
         to: endBlock
     })
     .setFinalityConfirmation(finalityConfirmation)
-    // Note: La taille des batches est gérée automatiquement par Subsquid
+    // Configuration de la taille des batches (si spécifiée)
+    // Note: La taille des batches est gérée automatiquement par Subsquid si non spécifiée
     // basée sur la taille des blocs et les ressources disponibles
+    // Pour les blocs historiques, on peut réduire la finality confirmation pour accélérer
     // Événements de la pallet revive pour les contrats
     .addEvent({
         name: ['Revive.ContractEmitted']

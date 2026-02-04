@@ -1,14 +1,10 @@
+import { LOG_LEVEL, TARGET_CONTRACTS, NODE_ENV } from '../config'
+
 // Système de logging intelligent pour contrôler les traces
 export class Logger {
-    private static logLevel: string
-    private static targetContracts: string[]
-    private static isProduction: boolean
-
-    static {
-        this.logLevel = process.env.LOG_LEVEL || 'info'
-        this.targetContracts = (process.env.TARGET_CONTRACTS || '0xe75cbd47620dbb2053cf2a98d06840f06baaf141').split(',').map(addr => addr.trim().toLowerCase())
-        this.isProduction = process.env.NODE_ENV === 'production'
-    }
+    private static logLevel: string = LOG_LEVEL
+    private static targetContracts: string[] = TARGET_CONTRACTS
+    private static isProduction: boolean = NODE_ENV === 'production'
 
     static debug(message: string, data?: any) {
         if (this.shouldLog('debug')) {

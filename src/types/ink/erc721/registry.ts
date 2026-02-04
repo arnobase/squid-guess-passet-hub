@@ -7,7 +7,7 @@
  * @generated - Do not edit manually, regenerate with gen-ink-decoder.js
  */
 
-import * as v0_1_3 from './v0.1.3'
+import * as v0_1_0 from './v0.1.0'
 
 /**
  * Version entry in registry
@@ -25,7 +25,7 @@ export type VersionEntry = {
  * Sorted by starting block height
  */
 const registry: VersionEntry[] = [
-  { version: 'v0.1.3', addresses: ['0x987b94aaff6c60d10002d76f7ec2fe3fef837559'], from: 1, to: null }
+  { version: 'v0.1.0', addresses: ['0xeb3c4a6d9dd4b62eca09f87e5de151f37c02c2e7'], from: 1, to: null }
 ]
 
 /**
@@ -73,7 +73,7 @@ export function resolveDecoder(_address: string, _blockHeight: number, _codeHash
   const entry = candidates[0]
   
   switch (entry.version) {
-      case 'v0.1.3': return v0_1_3
+      case 'v0.1.0': return v0_1_0
     default: throw new Error('Version not found: ' + entry.version)
   }
 }

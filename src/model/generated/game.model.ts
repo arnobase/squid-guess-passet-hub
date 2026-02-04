@@ -1,5 +1,6 @@
-import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, BigIntColumn as BigIntColumn_, Index as Index_, StringColumn as StringColumn_, IntColumn as IntColumn_, DateTimeColumn as DateTimeColumn_, ManyToOne as ManyToOne_, BooleanColumn as BooleanColumn_} from "@subsquid/typeorm-store"
+import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, BigIntColumn as BigIntColumn_, Index as Index_, ManyToOne as ManyToOne_, StringColumn as StringColumn_, IntColumn as IntColumn_, DateTimeColumn as DateTimeColumn_, BooleanColumn as BooleanColumn_} from "@subsquid/typeorm-store"
 import * as marshal from "./marshal"
+import {Player} from "./player.model"
 import {Contract} from "./contract.model"
 import {GuessHistoryItem} from "./_guessHistoryItem"
 
@@ -16,8 +17,12 @@ export class Game {
     @BigIntColumn_({nullable: false})
     gameNumber!: bigint
 
+    @Index_()
+    @ManyToOne_(() => Player, {nullable: true})
+    player!: Player
+
     @StringColumn_({nullable: false})
-    player!: string
+    playerAddress!: string
 
     @IntColumn_({nullable: false})
     minNumber!: number

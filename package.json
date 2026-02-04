@@ -15,8 +15,11 @@
     "migration:create": "npx squid-typeorm-migration create",
     "migration:clean": "rm -rf db/migrations/*",
     "codegen": "npx squid-substrate-typegen typegen.json",
-    "gen:decoder": "node packages/subsquid-ink-v6-decoder/lib/cli.js",
-    "gen:decoders": "node packages/subsquid-ink-v6-decoder/lib/cli.js --config src/decoders/ink-contracts.json",
+    "metadata:chain": "node -r dotenv/config scripts/dump-chain-metadata.mjs",
+    "metadata:update": "node scripts/update-metadata-safe.mjs",
+    "metadata:incremental": "node scripts/update-metadata-incremental.mjs",
+    "gen:decoder": "node packages/subsquid-ink-v6-decoder/lib/cli.mjs",
+    "gen:decoders": "node packages/subsquid-ink-v6-decoder/lib/cli.mjs --config src/decoders/ink-contracts.json",
     "gen:decoders:full": "bash -c 'cd packages/subsquid-ink-v6-decoder && npx tsc && cp src/cli.js lib/cli.js && cd ../.. && yarn gen:decoders && yarn build && rm -rf node_modules/@luckyweb3/subsquid-ink-v6-decoder && yarn install'",
     "processor": "node -r dotenv/config lib/main.js",
     "serve": "npx @subsquid/graphql-server"

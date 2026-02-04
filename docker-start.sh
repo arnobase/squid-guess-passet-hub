@@ -3,7 +3,7 @@
 # Script de démarrage pour Docker avec gestion des migrations
 set -e
 
-echo "🚀 Démarrage de l'indexeur Passet Hub..."
+echo "🚀 Starting Squid Guess indexer..."
 
 # Attendre que la base de données soit prête
 echo "⏳ Attente de la base de données..."

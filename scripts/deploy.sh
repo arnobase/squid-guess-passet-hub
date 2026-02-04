@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Script de déploiement local pour Passet Hub Indexer
+# Script de déploiement local pour Squid Guess Indexer
 # Usage: ./deploy.sh [environment]
 
 set -e
 
 ENVIRONMENT=${1:-local}
-PROJECT_NAME="passet-hub-indexer"
+PROJECT_NAME="squid-guess-indexer"
 
 echo "🚀 Déploiement de $PROJECT_NAME en environnement: $ENVIRONMENT"
 
@@ -120,7 +120,7 @@ health_check() {
     fi
     
     # Vérifier la base de données
-    if docker-compose exec -T db psql -U postgres -d passet_hub_indexer -c "SELECT 1;" > /dev/null 2>&1; then
+    if docker-compose exec -T db psql -U postgres -d squid_guess_indexer -c "SELECT 1;" > /dev/null 2>&1; then
         log "✅ Base de données fonctionne"
     else
         log "❌ Base de données ne fonctionne pas"
@@ -151,7 +151,7 @@ main() {
     log "🎉 Déploiement réussi !"
     log "📊 Services disponibles :"
     log "   - Indexer: http://localhost:4000 (GraphQL)"
-    log "   - Database: localhost:5435"
+    log "   - Database: localhost:5435 (squid_guess_indexer)"
     log "   - Logs: docker-compose logs -f"
 }
 

@@ -1,4 +1,23 @@
-# Supprimé : Account et Transfer - focus sur les jeux uniquement
+# Player entity - regroupe les infos d'un joueur
+type Player @entity {
+  id: ID! # Adresse du player (0x...)
+  
+  # Relations
+  games: [Game!]! @derivedFrom(field: "player")
+  tokens: [Token!]! @derivedFrom(field: "owner")
+  
+  # Stats agrégées (mises à jour lors de l'indexation)
+  maxMaxAttempts: Int # Maximum de maxAttempts parmi tous les tokens du player
+  totalGames: Int!
+  totalWins: Int!
+  totalTokens: Int!
+  
+  # Timestamps
+  firstSeenAt: DateTime!
+  firstSeenAtBlock: Int!
+  lastActiveAt: DateTime!
+  lastActiveAtBlock: Int!
+}
 
 type Contract @entity {
   id: ID!
@@ -7,13 +26,20 @@ type Contract @entity {
   instantiatedAtBlock: Int!
   instantiatedBy: String!
   
-  # Relations to specific event types
+  # Relations to specific event types (guess_the_number)
   gameStartedEvents: [GameStartedEvent!] @derivedFrom(field: "contract")
   guessSubmittedEvents: [GuessSubmittedEvent!] @derivedFrom(field: "contract")
   clueGivenEvents: [ClueGivenEvent!] @derivedFrom(field: "contract")
   gameOverEvents: [GameOverEvent!] @derivedFrom(field: "contract")
   gameCancelledEvents: [GameCancelledEvent!] @derivedFrom(field: "contract")
   maxAttemptsUpdatedEvents: [MaxAttemptsUpdatedEvent!] @derivedFrom(field: "contract")
+  
+  # Relations to ERC721 event types
+  mintEvents: [MintEvent!] @derivedFrom(field: "contract")
+  burntEvents: [BurntEvent!] @derivedFrom(field: "contract")
+  transferEvents: [TransferEvent!] @derivedFrom(field: "contract")
+  approvalEvents: [ApprovalEvent!] @derivedFrom(field: "contract")
+  approvalForAllEvents: [ApprovalForAllEvent!] @derivedFrom(field: "contract")
 }
 
 # Game started event
@@ -68,7 +94,8 @@ type ClueGivenEvent @entity {
 type Game @entity {
   id: ID!
   gameNumber: BigInt! @index
-  player: String!
+  player: Player! # Relation vers le player
+  playerAddress: String! # Adresse pour les requêtes directes
   minNumber: Int!
   maxNumber: Int!
   attempt: Int!
@@ -139,4 +166,95 @@ type MaxAttemptsUpdatedEvent @entity {
   gameNumber: BigInt! @index
   player: String!
   maxAttempts: Int!
+}
+
+# ============================================
+# ERC721 Events
+# ============================================
+
+# Mint event (ERC721)
+type MintEvent @entity {
+  id: ID!
+  contract: Contract!
+  blockNumber: Int! @index
+  timestamp: DateTime! @index
+  extrinsicHash: String @index
+  contractAddress: String!
+  
+  # Mint specific fields
+  tokenId: BigInt! @index
+  maxAttempts: BigInt
+}
+
+# Burnt event (ERC721)
+type BurntEvent @entity {
+  id: ID!
+  contract: Contract!
+  blockNumber: Int! @index
+  timestamp: DateTime! @index
+  extrinsicHash: String @index
+  contractAddress: String!
+  
+  # Burnt specific fields
+  tokenId: BigInt! @index
+}
+
+# Transfer event (ERC721)
+type TransferEvent @entity {
+  id: ID!
+  contract: Contract!
+  blockNumber: Int! @index
+  timestamp: DateTime! @index
+  extrinsicHash: String @index
+  contractAddress: String!
+  
+  # Transfer specific fields
+  from: String @index
+  to: String @index
+  tokenId: BigInt! @index
+}
+
+# Approval event (ERC721)
+type ApprovalEvent @entity {
+  id: ID!
+  contract: Contract!
+  blockNumber: Int! @index
+  timestamp: DateTime! @index
+  extrinsicHash: String @index
+  contractAddress: String!
+  
+  # Approval specific fields
+  from: String! @index
+  to: String! @index
+  tokenId: BigInt! @index
+}
+
+# ApprovalForAll event (ERC721)
+type ApprovalForAllEvent @entity {
+  id: ID!
+  contract: Contract!
+  blockNumber: Int! @index
+  timestamp: DateTime! @index
+  extrinsicHash: String @index
+  contractAddress: String!
+  
+  # ApprovalForAll specific fields
+  owner: String! @index
+  operator: String! @index
+  approved: Boolean!
+}
+
+# Token entity (ERC721) - représente un NFT
+type Token @entity {
+  id: ID! # Format: {contractAddress}-{tokenId}
+  contract: Contract!
+  tokenId: BigInt! @index
+  owner: Player! # Relation vers le player
+  ownerAddress: String! @index # Adresse pour les requêtes directes
+  mintedAt: DateTime! @index
+  mintedAtBlock: Int! @index
+  maxAttempts: BigInt
+  burnt: Boolean!
+  burntAt: DateTime
+  burntAtBlock: Int
 }

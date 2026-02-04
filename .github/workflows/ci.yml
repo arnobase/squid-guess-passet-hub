@@ -32,6 +32,11 @@ jobs:
       
     - name: Install dependencies
       run: yarn install --frozen-lockfile
+
+    - name: Generate chain metadata
+      env:
+        RPC_URL_WS: "wss://query.substrate.fi/guess-the-number-node"
+      run: yarn metadata:chain
       
     - name: Lint TypeScript
       run: yarn lint || echo "Linting not configured, skipping..."
@@ -107,7 +112,7 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: ./Dockerfile.simple
+        file: ./Dockerfile
         push: true
         tags: ${{ steps.meta-indexer.outputs.tags }}
         labels: ${{ steps.meta-indexer.outputs.labels }}
@@ -118,7 +123,7 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: ./Dockerfile.simple
+        file: ./Dockerfile
         push: true
         tags: ${{ steps.meta-api.outputs.tags }}
         labels: ${{ steps.meta-api.outputs.labels }}
@@ -136,6 +141,14 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Generate chain metadata
+      env:
+        RPC_URL_WS: "wss://query.substrate.fi/guess-the-number-node"
+      run: |
+        corepack enable
+        yarn install --frozen-lockfile
+        yarn metadata:chain
       
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -147,12 +160,13 @@ jobs:
     - name: Start services with test environment
       env:
         DB_PORT: "5432"
-        RPC_PASSET_HUB_WS: "wss://passet-hub-paseo.ibp.network"
+        RPC_URL_WS: "wss://query.substrate.fi/guess-the-number-node"
+        GUESS_THE_NUMBER_CONTRACTS: "0x987b94aaff6c60d10002d76f7ec2fe3fef837559"
+        ERC721_CONTRACTS: "0xeb3c4a6d9dd4b62eca09f87e5de151f37c02c2e7"
         START_BLOCK: "1888457"
         END_BLOCK: ""
         FINALITY_CONFIRMATION: "1"
         LOG_LEVEL: "info"
-        TARGET_CONTRACTS: "0xe75cbd47620dbb2053cf2a98d06840f06baaf141"
       run: |
         docker compose up -d
         sleep 15
@@ -172,7 +186,7 @@ jobs:
       run: |
         # Vérifier que l'indexer démarre correctement (sans vérifier le traitement de blocs)
         docker compose logs indexer --tail=30
-        if docker compose logs indexer | grep -q "Starting Passet Hub Indexer"; then
+        if docker compose logs indexer | grep -q "Starting Squid Guess"; then
           echo "✅ Indexer started successfully"
         else
           echo "⚠️ Indexer startup logs not found (may be normal in CI)"
@@ -192,7 +206,7 @@ jobs:
     - name: Test database connection
       run: |
         # Vérifier que la base de données est accessible
-        if docker compose exec -T db psql -U postgres -d passet_hub_indexer -c "SELECT 1;" > /dev/null 2>&1; then
+        if docker compose exec -T db psql -U postgres -d squid_guess_indexer -c "SELECT 1;" > /dev/null 2>&1; then
           echo "✅ Database is accessible"
         else
           echo "❌ Database is not accessible"

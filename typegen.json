@@ -1,6 +1,6 @@
 {
   "outDir": "src/types",
-  "specVersions": "./westend-asset-hub-metadata-filtered.jsonl",
+  "specVersions": "./metadata/chain-metadata.jsonl",
   "typesBundle": "./typesBundle.json",
   "pallets": {
     "Revive": {
